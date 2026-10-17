@@ -1,0 +1,656 @@
+import asyncio
+import hashlib
+import re
+import time
+from urllib.parse import quote, unquote_plus
+from xml.etree import ElementTree
+
+from app.config import Config
+from app.sources.base import SourceError
+
+_MAGNET_RE = re.compile(r"^magnet:\?xt=urn:btih:[a-fA-F0-9]{32,64}.*")
+_SIZE_RE = re.compile(r"(\d+[.,]?\d*)\s*(GB|MB|TB)", re.I)
+_NON_MEDIA_RE = re.compile(
+    r"\b(pdf|mp3|flac|cbr|cbz|epub|djvu|docx?|xlsx?|pptx?|wav|mobi|azw3?)\b",
+    re.I,
+)
+
+# ----------------- scoring release-uri (alegerea AUTO) -----------------
+
+# marcheri de dublaj/voiceover rusesc în numele release-ului
+_RU_AUDIO_RE = re.compile(
+    r"дубля\w*|дублаж|дубл|многоголос\w*|закадров\w*|одноголос\w*|перевод|"
+    r"jaskier|lostfilm|hdrezka|kerob|cubetelevision|кубик|parovoz|newstudio|alexfilm|"
+    r"baibako|hamsterstudio|reedick|greenray|лиценз",
+    re.I,
+)
+_CAM_RE = re.compile(r"[\s\._\(\[](?:cam|ts|telesync|screener|vhsrip|wp|workprint)[\s\._\)\]]", re.I)
+_VIDEO_EXT_RE = re.compile(r"\.(mp4|mkv|avi|webm|mov|m4v|mpg|mpeg)$", re.I)
+
+
+def _parse_size_gb(size: str | None) -> float | None:
+    if not size:
+        return None
+    m = re.search(r"(\d+[.,]?\d*)\s*(TB|GB|MB|KB)", str(size), re.I)
+    if not m:
+        return None
+    v = float(m.group(1).replace(",", "."))
+    return v * {"TB": 1024.0, "GB": 1.0, "MB": 1 / 1024, "KB": 1 / 1024 / 1024}[m.group(2).upper()]
+
+
+def quality_label(name: str) -> str | None:
+    n = (name or "").lower()
+    if re.search(r"2160|4k|uhd", n):
+        return "4K"
+    if "1080" in n:
+        return "1080p"
+    if "720" in n:
+        return "720p"
+    if _CAM_RE.search(n):
+        return "CAM"
+    if re.search(r"dvd|dvdr", n):
+        return "SD"
+    return None
+
+
+def score_torrent(item: dict, query_year: int | None = None) -> tuple[float, str | None]:
+    """Scor pentru alegerea AUTO: preferă dublaj RU + calitate bună + seederi;
+    penalizează camera (CAM), trailere, dimensiuni aberante și titlurile greșite."""
+    name = item.get("name") or ""
+    n = name.lower()
+    score = 0.0
+    q = quality_label(name)
+    if q == "4K":
+        score += 5
+    elif q == "1080p":
+        score += 4
+    elif q == "720p":
+        score += 3
+    elif q == "CAM":
+        score -= 25
+    if re.search(r"web-?dl|blu-?ray|remux|bdrip|bd-?rip", n):
+        score += 2
+    elif re.search(r"webrip|hdrip|hdtv|dvdrip", n):
+        score += 1
+    if _RU_AUDIO_RE.search(n):
+        # dominant: un release cu dublaj RU bate orice release EN de calitate mai bună
+        score += 12
+    if re.search(r"трейлер|trailer|промо|promo\b", n):
+        score -= 20
+    # titlu greșit: release-ul poartă alt an decât cel căutat (ex. remake-uri vechi)
+    if query_year:
+        years = {int(y) for y in re.findall(r"(?:19|20)\d{2}", name)}
+        if years and query_year not in years:
+            score -= 15
+    size_gb = _parse_size_gb(item.get("size"))
+    if size_gb is not None:
+        if size_gb < 0.35:
+            score -= 6  # suspect de mic pentru un film
+        elif size_gb > 45:
+            score -= 4  # remux 4K monștruos
+    seeds = item.get("seeds") or 0
+    score += min(4.0, ((seeds + 1) ** 0.5) / 2)
+    return round(score, 2), q
+
+
+def has_ru_audio(name: str | None) -> bool:
+    return bool(_RU_AUDIO_RE.search((name or "").lower()))
+
+
+def dedupe_results(items: list[dict]) -> list[dict]:
+    """Elimină duplicatele pe toate sursele: același infohash = același torrent."""
+    seen: set[str] = set()
+    out: list[dict] = []
+    for r in items:
+        key = r.get("magnet") or r.get("torrent_url") or r.get("name") or ""
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(r)
+    return out
+
+
+def find_episode_file(files: list[dict], season: int, episode: int) -> int | None:
+    """Indexul fișierului care corespunde EXACT episodului. Nivelul 1: tipare combinate
+    (S02E05, 2x5, '3 сезон 1 серия', '407.avi'). Nivelul 2: sezonul apare în nume și
+    episodul ca număr izolat ('07.08. Жуки.S04.2024...'). None dacă nimic nu se potrivește."""
+    pats = [
+        re.compile(rf"s0*{season}[\s._\-]?e0*{episode}(?!\d)", re.I),
+        re.compile(rf"(?<!\d)0*{season}x0*{episode}(?!\d)", re.I),
+        # sezon-și-episod în rusă sau transliterație, în ambele ordini:
+        # „сезон 3 серия 1”, „3 сезон 1 серия”, „3.sezon.1.serija”
+        re.compile(
+            rf"(?:сезон|sezon|season)[\s._\-]*0*{season}(?!\d).*?0*{episode}[\s._\-]*(?:серия|сер|эпизод|seriya|serija|seria|episod\w*|episode)(?!\d)",
+            re.I,
+        ),
+        re.compile(
+            rf"0*{season}[\s._\-]*(?:сезон|sezon|season)[\s._\-].{{0,30}}?0*{episode}[\s._\-]*(?:серия|сер|эпизод|seriya|serija|seria|episod\w*|episode)(?!\d)",
+            re.I,
+        ),
+        re.compile(rf"(?<!\d)0*{season}0*{episode:02d}(?!\d)"),  # 407.avi (sezon+episod concatenați)
+    ]
+    for i, f in enumerate(files):
+        nm = f.get("name") or ""
+        if any(p.search(nm) for p in pats):
+            return i
+    # nivelul 2: „07.08. Жуки.S04.2024.WEB-DL...” — sezon + episod ca număr izolat
+    season_pat = re.compile(rf"s0*{season}(?!\d)", re.I)
+    ep_pat = re.compile(rf"(?<!\d)0*{episode}(?!\d)")
+    for i, f in enumerate(files):
+        nm = f.get("name") or ""
+        if season_pat.search(nm) and ep_pat.search(nm):
+            return i
+    return None
+
+
+def first_video_index(files: list[dict]) -> int | None:
+    for i, f in enumerate(files):
+        nm = f.get("name") or ""
+        if not nm or _VIDEO_EXT_RE.search(nm):
+            return i
+    return None
+
+
+def pick_file_index(files: list[dict], season: int, episode: int) -> int | None:
+    """Compat: potrivire exactă, altfel primul fișier video."""
+    idx = find_episode_file(files, season, episode)
+    return idx if idx is not None else first_video_index(files)
+
+
+def pack_mentions_season(name: str, season: int) -> bool:
+    """Numele release-ului (pachetului) indică sezonul dat?
+    ex: 'S4E1-17 of 17', 'Жуки 3 сезон', '4x01'."""
+    n = (name or "").lower()
+    pats = [
+        rf"s0*{season}(?!\d)\s*[\s._\-]?e",
+        rf"(?<!\d)0*{season}x\d",
+        rf"0*{season}\s*(?:сезон|sezon|season)",
+        rf"(?:сезон|sezon|season)\s*0*{season}(?!\d)",
+    ]
+    return any(re.search(p, n) for p in pats)
+
+
+# cache in-memory pentru rezultatele de căutare magneți (15 min)
+_SEARCH_CACHE: dict[str, tuple[float, list[dict]]] = {}
+_SEARCH_CACHE_TTL = 900.0
+
+
+def _mk_headers() -> dict:
+    return {"User-Agent": Config.USER_AGENT}
+
+
+def _proxies() -> dict | None:
+    """Proxy opțional pentru sursele web (datacenter IP-urile sunt blocate adesea)."""
+    return {"http": Config.PROXY, "https": Config.PROXY} if Config.PROXY else None
+
+
+# ----------------- TorrServer: autentificare opțională -----------------
+
+def ts_auth() -> tuple[str, str] | None:
+    """(user, parolă) dacă TorrServer-ul e protejat de parolă."""
+    if not Config.TORRSERVER_AUTH or ":" not in Config.TORRSERVER_AUTH:
+        return None
+    user, _, pw = Config.TORRSERVER_AUTH.partition(":")
+    return (user, pw)
+
+
+def ts_stream_url(url: str) -> str:
+    """URL-ul de stream predat browserului; cu parolă activă, înglobează
+    credențialele (http://user:pass@host/...) ca video elementul să le trimită."""
+    auth = ts_auth()
+    if not auth:
+        return url
+    prefix = f"{Config.TORRSERVER_URL.split('://', 1)[0]}://"
+    if url.startswith(f"{prefix}{auth[0]}:"):
+        return url  # deja înglobat
+    return url.replace(prefix, f"{prefix}{auth[0]}:{auth[1]}@", 1)
+
+
+# ----------------- Jackett / Torznab (optional, normalizat) -----------------
+
+def _torznab_configured() -> bool:
+    return bool(Config.TORZNAB_URL and Config.TORZNAB_API_KEY)
+
+
+def _parse_torznab(xml_bytes: bytes) -> list[dict]:
+    """Parsează răspunsul Torznab (XML) -> intrări normalizate."""
+    root = ElementTree.fromstring(xml_bytes)
+    out: list[dict] = []
+    for item in root.iter("item"):
+        title = item.findtext("title") or ""
+        size = (item.findtext("size") or "").strip()
+        link_el = item.findtext("link") or ""
+        guid = item.findtext("guid") or ""
+        # Jackett foloseste namespace torznab:attr (si pe unii feed-uri attr simplu)
+        attrs = {}
+        for a in item.iter():
+            tag = a.tag.rsplit("}", 1)[-1]  # scoate {ns} prefixul
+            if tag == "attr" and a.get("name"):
+                attrs[a.get("name")] = a.get("value") or ""
+        seeds = attrs.get("seeders")
+        magnet = attrs.get("magneturl") or None
+        torrent_url = None
+        link = link_el or guid
+        if link.startswith("magnet:"):
+            magnet = magnet or link
+        elif link:
+            torrent_url = link
+
+        if not magnet and not torrent_url:
+            continue
+        magnet_short = None
+        if magnet:
+            m = re.search(r"urn:btih:([a-fA-F0-9]{32,64})", magnet)
+            magnet_short = f"magnet:?xt=urn:btih:{m.group(1).lower()}" if m else magnet
+
+        out.append({
+            "name": title,
+            "magnet": magnet_short,
+            "torrent_url": torrent_url,
+            "size": _human_size(int(size)) if size.isdigit() else (size or None),
+            "seeds": int(seeds) if seeds and seeds.isdigit() else None,
+            "source": "jackett",
+            "indexer": attrs.get("jackettindexer") or attrs.get("jackettindexers") or attrs.get("indexer") or None,
+        })
+    return out
+
+
+def _search_torznab(query: str, limit: int) -> list[dict]:
+    """Interogare Torznab (Jackett): returneaza magneți sau linkuri .torrent.
+    Pentru intrarile fara magnet (ex. RuTracker prin Jackett) descarcam .torrent-ul
+    si calculam infohash-ul ca sa fie compatibil cu TorrServer."""
+    import requests
+
+    indexer = Config.TORZNAB_INDEXER or "all"
+    url = (
+        f"{Config.TORZNAB_URL.rstrip('/')}/api/v2.0/indexers/{indexer}/results/torznab/api"
+        f"?apikey={Config.TORZNAB_API_KEY}&q={quote(query)}&limit={limit}"
+    )
+    r = requests.get(url, headers=_mk_headers(), proxies=_proxies(), timeout=25)
+    r.raise_for_status()
+    return _parse_torznab(r.content)
+
+
+def _human_size(n: int) -> str:
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if n < 1024 or unit == "TB":
+            return f"{n:.2f} {unit}" if unit != "B" else f"{n} {unit}"
+        n /= 1024.0
+    return f"{n:.2f} TB"
+
+
+# ----------------- bencode minimal: .torrent -> infohash -----------------
+
+def _bencode(data) -> bytes:
+    if isinstance(data, int):
+        return b"i%de" % data
+    if isinstance(data, bytes):
+        return str(len(data)).encode() + b":" + data
+    if isinstance(data, str):
+        b = data.encode()
+        return str(len(b)).encode() + b":" + b
+    if isinstance(data, list):
+        return b"l" + b"".join(_bencode(i) for i in data) + b"e"
+    if isinstance(data, dict):
+        items = sorted(data.items())
+        return b"d" + b"".join(_bencode(k) + _bencode(v) for k, v in items) + b"e"
+    raise ValueError("tip bencode nesuportat")
+
+
+def _bdecode(buf: bytes, pos: int = 0):
+    c = buf[pos:pos + 1]
+    if c == b"i":
+        end = buf.index(b"e", pos)
+        return int(buf[pos + 1:end]), end + 1
+    if c == b"l":
+        pos += 1
+        out = []
+        while buf[pos:pos + 1] != b"e":
+            val, pos = _bdecode(buf, pos)
+            out.append(val)
+        return out, pos + 1
+    if c == b"d":
+        pos += 1
+        out = {}
+        while buf[pos:pos + 1] != b"e":
+            key, pos = _bdecode(buf, pos)
+            val, pos = _bdecode(buf, pos)
+            out[key] = val
+        return out, pos + 1
+    m = re.match(rb"(\d+):", buf[pos:])
+    if not m:
+        raise ValueError("bencode invalid")
+    ln = int(m.group(1))
+    start = pos + m.end()
+    return buf[start:start + ln], start + ln
+
+
+def _infohash_from_torrent(data: bytes) -> str:
+    """sha1 al dict-ului b'info' din .torrent -> infohash hex (40 chars)."""
+    decoded, _ = _bdecode(data)
+    info = decoded[b"info"]
+    return hashlib.sha1(_bencode(info)).hexdigest()
+
+
+# ----------------- cautare pe Rutor -----------------
+
+def _parse_rutor(html: str) -> list[dict]:
+    """Parsare tolerant pagina cu rezultate Rutor: randuri cu link magnet."""
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(html, "html.parser")
+    out: list[dict] = []
+    seen: set[str] = set()
+
+    for a in soup.find_all("a", href=_MAGNET_RE):
+        magnet = a["href"].split("&")[0]  # magnet simplu (btih)
+        row = a.find_parent("tr")
+        if not row:
+            continue
+        # titlul e link-ul /torrent/<id>/... (nu iconita de download / magnet)
+        title_a = row.find("a", href=re.compile(r"^/torrent/\d+"))
+        name = (title_a.get_text(strip=True) if title_a else a.get_text(strip=True)) or ""
+        size_m = _SIZE_RE.search(row.get_text(" ", strip=True))
+        seeds = None
+        green = row.select_one("span.green")  # seederi pe rutor (span verde)
+        if green:
+            ms = re.search(r"(\d+)", green.get_text(" ", strip=True))
+            if ms:
+                seeds = int(ms.group(1))
+        if not name or magnet in seen:
+            continue
+        seen.add(magnet)
+        out.append(
+            {"name": name, "magnet": magnet, "size": size_m.group(0) if size_m else None,
+             "seeds": seeds, "source": "rutor"}
+        )
+    return out
+
+
+def _search_rutor_once(mirror: str, query: str) -> list[dict]:
+    import requests
+
+    r = requests.get(f"{mirror}search/{query}", headers=_mk_headers(), proxies=_proxies(), timeout=20)
+    r.raise_for_status()
+    return _parse_rutor(r.text)
+
+
+def _search_mirrors(query: str) -> list[dict]:
+    last_err: Exception | None = None
+    for mirror in Config.RUTOR_MIRRORS:
+        m = mirror.rstrip("/") + "/"
+        try:
+            hits = _search_rutor_once(m, query)
+            if hits:
+                return hits
+            last_err = SourceError(f"{m}: rezultate goale")
+        except Exception as e:  # noqa: BLE001 — incercam urmatorul mirror
+            last_err = e
+    raise last_err or SourceError("Niciun mirror Rutor configurat")
+
+
+async def search_torrents(query: str, limit: int | None = None) -> list[dict]:
+    limit = limit or Config.TORRENT_LIMIT
+    # cache scurt: evităm bombardarea surselor la fiecare deschidere de detaliu
+    cache_key = f"{query.lower()}|{limit}"
+    cached = _SEARCH_CACHE.get(cache_key)
+    if cached and time.monotonic() - cached[0] < _SEARCH_CACHE_TTL:
+        return cached[1]
+
+    parts = query.split()
+    stripped = " ".join(parts[:-1]) if (len(parts) > 1 and parts[-1].isdigit()) else None
+
+    async def _jackett() -> list[dict]:
+        if not _torznab_configured():
+            return []
+        try:
+            return await asyncio.to_thread(_search_torznab, query, limit) or []
+        except Exception:  # noqa: BLE001 — best-effort
+            return []
+
+    async def _rutor() -> list[dict]:
+        # pe Rutor căutarea "frază" cu an dă adesea zero -> fallback fără an
+        for q in (query, stripped):
+            if not q:
+                continue
+            try:
+                return await asyncio.to_thread(_search_mirrors, q) or []
+            except Exception:  # noqa: BLE001 — încercăm varianta următoare
+                continue
+        return []
+
+    # Jackett (trackere internaționale) + Rutor (trackere RU cu dublaj) în paralel,
+    # apoi deduplicare pe infohash — scoring-ul decide câștigătorul, nu ordinea sursei
+    jackett_res, rutor_res = await asyncio.gather(_jackett(), _rutor())
+    results = dedupe_results([*jackett_res, *rutor_res])
+
+    if not results:  # fallback DHT (BTDig) când ambele sunt goale
+        try:
+            results = await asyncio.to_thread(_search_provider_btdig, query) or []
+        except Exception:  # noqa: BLE001 — btdig e best-effort
+            results = []
+    results = _filter_media(results)
+    if not results:
+        raise SourceError(f"Niciun rezultat de torrent pentru '{query}'")
+
+    # scor + sortare: cel mai bun release primul
+    query_year = int(parts[-1]) if parts and parts[-1].isdigit() else None
+    annotated = []
+    for r in results:
+        score, q = score_torrent(r, query_year)
+        annotated.append({
+            **r,
+            "score": score,
+            "quality": q or "",
+            "dub": "RU" if has_ru_audio(r.get("name")) else "",
+        })
+    annotated.sort(key=lambda r: r["score"], reverse=True)
+    annotated = annotated[:limit]
+    _SEARCH_CACHE[cache_key] = (time.monotonic(), annotated)
+    return annotated
+
+
+def _filter_media(results: list[dict]) -> list[dict]:
+    return [r for r in results if not _NON_MEDIA_RE.search(r["name"])]
+
+
+# ----------------- BTDig (fallback DHT) -----------------
+
+def _parse_btdig(html: str) -> list[dict]:
+    """BTDig: fiecare rezultat are un link magnet; numele vine din dn=, dimensiunea
+    din liseful 'X fisiere / SIZE' al grupei."""
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(html, "html.parser")
+    out: list[dict] = []
+    seen: set[str] = set()
+    for a in soup.find_all("a", href=_MAGNET_RE):
+        full = a["href"]
+        base = full.split("&")[0]
+        if base in seen:
+            continue
+        m_dn = re.search(r"[?&]dn=([^&]+)", full)
+        name = unquote_plus(m_dn.group(1)) if m_dn else "torrent"
+        size = None
+        block = a.find_parent("div", style=re.compile("table-row")) or a.find_parent("div")
+        if block:
+            m_size = _SIZE_RE.search(block.get_text(" ", strip=True))
+            if m_size:
+                size = m_size.group(0)
+        seen.add(base)
+        out.append({"name": name, "magnet": base, "size": size, "seeds": None, "source": "btdig"})
+    return out
+
+
+def _search_provider_btdig(query: str) -> list[dict]:
+    import requests
+
+    r = requests.get(
+        f"https://btdig.com/0/order/1/?q={quote(query)}",
+        headers=_mk_headers(),
+        proxies=_proxies(),
+        timeout=25,
+    )
+    r.raise_for_status()
+    return _parse_btdig(r.text)
+
+
+# ----------------- TorrServer (MatriX, m3u-based) -----------------
+
+_BTILH_RE = re.compile(r"urn:btih:([a-fA-F0-9]{32,64})")
+
+
+def _hash_from_magnet(magnet: str) -> str:
+    m = _BTILH_RE.search(magnet)
+    if not m:
+        raise SourceError("Magnetul nu are un info hash valid")
+    return m.group(1).lower()
+
+
+def _torrent_m3u_once(h: str) -> tuple[list[dict], str | None]:
+    """GET /stream/playlist.m3u?link=<hash>&m3u — inregistreaza torrentul si
+    intoarce lista de fisiere (nume + index + URL stream absolut)."""
+    import requests
+
+    r = requests.get(
+        f"{Config.TORRSERVER_URL}/stream/playlist.m3u?link={h}&m3u",
+        headers={"User-Agent": Config.USER_AGENT},
+        auth=ts_auth(),
+        timeout=(5, 120),
+    )
+    r.raise_for_status()
+    text = r.text
+    files: list[dict] = []
+    last_name: str | None = None
+    for line in text.splitlines():
+        line = line.strip()
+        if line.startswith("#EXTINF:"):
+            last_name = line.split(",", 1)[1].strip() if "," in line else None
+        elif line.startswith("http") and "/stream/" in line:
+            m_idx = re.search(r"(?:^|[?&])index=(\d+)", line)
+            files.append({
+                "index": int(m_idx.group(1)) if m_idx else len(files),
+                "name": last_name or line.rsplit("/", 1)[-1].split("?")[0],
+                "url": line,
+            })
+            last_name = None
+    return files, text or None
+
+
+async def torrserver_play(
+    source: dict | str,
+    index: int = 0,
+    season: int | None = None,
+    episode: int | None = None,
+) -> dict:
+    """Adauga torrentul in TorrServer (MatriX, prin .m3u) si intoarce fișierele
+    plus URL-ul de direct-stream al ferestrei selectate.
+
+    source poate fi: magnet str SAU dict {magnet?, torrent_url?} (din Jackett).
+    Dacă se dau season/episode, alege automat fișierul potrivit episodului."""
+    magnet = None
+    if isinstance(source, dict):
+        magnet = source.get("magnet")
+        torrent_url = source.get("torrent_url")
+    else:
+        magnet = source
+        torrent_url = None
+
+    if not magnet:
+        if not torrent_url:
+            raise SourceError("Niciun magnet și niciun .torrent")
+        # .torrent (Jackett/RuTracker) -> infohash
+        import requests
+
+        r = requests.get(torrent_url, headers=_mk_headers(), timeout=40)
+        r.raise_for_status()
+        h = _infohash_from_torrent(r.content)
+        magnet = f"magnet:?xt=urn:btih:{h}"
+    else:
+        h = _hash_from_magnet(magnet)
+
+    try:
+        files, _ = await asyncio.to_thread(_torrent_m3u_once, h)
+    except Exception as e:  # noqa: BLE001
+        raise SourceError(
+            f"TorrServer nu raspunde la {Config.TORRSERVER_URL} ({e}). "
+            "porneste TorrServer (vezi README) sau ajusteaza TORRSERVER_URL in .env."
+        ) from e
+    if not files:
+        raise SourceError("TorrServer nu a returnat fluxuri — torrentul nu e găsit / seed zero")
+    index = max(0, min(index, max(0, len(files) - 1)))
+    matched = False
+    if season is not None and episode is not None:
+        ep_index = find_episode_file(files, season, episode)
+        if ep_index is not None:
+            index, matched = ep_index, True
+        else:
+            fallback = first_video_index(files)
+            if fallback is not None:
+                index = fallback
+    file = files[index]
+    return {
+        "name": file["name"],
+        "files": [{**f, "url": ts_stream_url(f["url"])} for f in files],
+        "stream_url": ts_stream_url(file["url"]),
+        "index": file["index"],
+        "matched": matched,
+    }
+
+
+# ----------------- TorrServer: gospodărire cache (pagina Descărcări) -----------------
+
+def _ts_request(action: str, torrent_hash: str | None = None):
+    import requests
+
+    body: dict = {"action": action}
+    if torrent_hash:
+        body["hash"] = torrent_hash
+    r = requests.post(
+        f"{Config.TORRSERVER_URL}/torrents",
+        json=body,
+        headers={"User-Agent": Config.USER_AGENT},
+        auth=ts_auth(),
+        timeout=10,
+    )
+    r.raise_for_status()
+    try:
+        return r.json()
+    except ValueError:
+        return None
+
+
+async def list_downloads() -> list[dict]:
+    """Torrenții ținuți în cache de TorrServer."""
+    def _run() -> list[dict]:
+        items = _ts_request("list") or []
+        out = []
+        for t in items:
+            speed = t.get("download_speed") or 0
+            out.append({
+                "hash": t.get("hash"),
+                "name": t.get("title") or t.get("name") or "?",
+                "size": _human_size(t.get("torrent_size") or 0),
+                "status": t.get("stat_string") or "",
+                "speed": f"{speed / 1024 / 1024:.2f} MB/s" if speed else "",
+                "timestamp": t.get("timestamp"),
+            })
+        return out
+
+    try:
+        return await asyncio.to_thread(_run)
+    except Exception as e:  # noqa: BLE001
+        raise SourceError(
+            f"TorrServer nu raspunde la {Config.TORRSERVER_URL} ({e}). "
+            "Porneste TorrServer sau ajusteaza TORRSERVER_URL in .env."
+        ) from e
+
+
+async def remove_download(torrent_hash: str) -> None:
+    def _run() -> None:
+        _ts_request("rem", torrent_hash)
+
+    try:
+        await asyncio.to_thread(_run)
+    except Exception as e:  # noqa: BLE001
+        raise SourceError(f"TorrServer nu a putut șterge torrentul ({e}).") from e

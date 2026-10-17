@@ -1,0 +1,38 @@
+# vid pe VPS: portalul + (opțional) TorrServer local, cu date persistente în ./data și ./torrserver
+# Dacă folosești un TorrServer la distanță: pune în .env TORRSERVER_URL + TORRSERVER_AUTH
+# și pornește doar portalul:  docker compose up -d --build vid
+services:
+  vid:
+    build: .
+    container_name: vid
+    environment:
+      - TMDB_API_KEY=${TMDB_API_KEY}
+      - TMDB_LANG=${TMDB_LANG:-ru-RU}
+      - APP_PASSWORD=${APP_PASSWORD}
+      - APP_SECRET=${APP_SECRET}
+      - PROXY=${PROXY:-}
+      - TORRSERVER_URL=${TORRSERVER_URL:-http://torrserver:8090}
+      - TORRSERVER_AUTH=${TORRSERVER_AUTH:-}
+      - TORZNAB_URL=${TORZNAB_URL:-}
+      - TORZNAB_API_KEY=${TORZNAB_API_KEY:-}
+      - OS_API_KEY=${OS_API_KEY:-}
+      - HTTPS_ON=${HTTPS_ON:-}
+    volumes:
+      - ./data:/data
+    ports:
+      - "127.0.0.1:8000:8000"   # accesibil doar local pe VPS; spre internet merge prin tunel/reverse-proxy
+    restart: unless-stopped
+
+  torrserver:
+    image: ghcr.io/yourok/torrserver:latest
+    container_name: torrserver
+    profiles: ["local-torrserver"]   # pornește doar cu: docker compose --profile local-torrserver up -d
+    environment:
+      - TS_CONF_DIR=/config
+      - TS_PORT=8090
+      - TORRSERVER_PORT=8090
+      - AUTHPASSWORD=${TORR_PASSWORD:-vidlocal}
+    volumes:
+      - ./torrserver:/config
+    restart: unless-stopped
+    # fără ports: răspunde doar în rețeaua internă docker, pentru vid

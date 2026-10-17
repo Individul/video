@@ -1,0 +1,23 @@
+.venv/
+__pycache__/
+*.pyc
+vid.db
+.pytest_cache/
+.env
+
+# cookie-uri de sesiune exportate (secrete — nu intra in git)
+*_cookies.txt
+
+# date locale generate: config TorrServer + log-uri + cache subtitrări
+config.db
+settings.json
+subs/
+*.log
+
+# binare si unelte externe
+tools/
+.commandcode/
+
+# volume VPS (nu intra in git)
+data/
+torrserver/

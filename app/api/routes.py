@@ -1,0 +1,506 @@
+import asyncio
+import json
+import os
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from pydantic import BaseModel, Field
+from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from app.auth import COOKIE_NAME, check_password, make_token, require_auth
+from app.config import Config
+from app.db import get_session
+from app.models import (
+    HistoryItem,
+    Title,
+    TitleType,
+    WatchlistItem,
+    WatchlistStatus,
+)
+from app.services import catalog
+from app.services.search import aggregate_search
+from app.sources import get_source, SOURCES
+from app.sources.base import SearchHit, SourceError
+from app.sources import subtitles
+from app.sources import torrents as torrent_service
+
+router = APIRouter(prefix="/api", tags=["api"], dependencies=[Depends(require_auth)])
+
+auth_router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+
+# ----------------- modele request (validare automata -> 422) -----------------
+
+
+class PlaySource(BaseModel):
+    """Rand de torrent din /api/torrents: magnet sau torrent_url (Jackett/RuTracker)."""
+
+    magnet: str | None = None
+    torrent_url: str | None = None
+
+
+class PlayBody(BaseModel):
+    magnet: PlaySource | str | None = None
+    source: PlaySource | str | None = None
+    index: int = Field(default=0, ge=0)
+    season: int | None = Field(default=None, ge=1)
+    episode: int | None = Field(default=None, ge=1)
+
+
+class WatchlistBody(BaseModel):
+    title_id: int
+    status: WatchlistStatus = WatchlistStatus.TO_WATCH
+
+
+class HistoryBody(BaseModel):
+    title_id: int
+    season: int | None = None
+    episode: int | None = None
+    position_seconds: float = 0
+    duration_seconds: float | None = None
+
+
+class HitBody(BaseModel):
+    """Un rezultat de căutare (din similar/recenzii) → titlu în DB."""
+
+    source: str
+    name: str
+    source_url: str
+    poster: str | None = None
+    year: int | None = None
+    category: str | None = None
+    rating: float | None = None
+
+
+def _title_to_dict(t: Title, with_details: bool = False) -> dict[str, Any]:
+    d = {
+        "id": t.id,
+        "source": t.source,
+        "source_url": t.source_url,
+        "name": t.name,
+        "name_original": t.name_original,
+        "year": t.year,
+        "type": t.title_type.value if t.title_type else None,
+        "category": t.category,
+        "poster": t.poster,
+        "rating": t.rating,
+    }
+    if with_details:
+        d["description"] = t.description
+        d["episodes"] = sorted(
+            (
+                {"season": e.season, "episode": e.episode, "name": e.name, "still": e.still}
+                for e in t.episodes
+            ),
+            key=lambda e: (e["season"], e["episode"]),
+        )
+        extra: dict = {}
+        if t.extra:
+            try:
+                extra = json.loads(t.extra)
+            except (TypeError, ValueError):
+                extra = {}
+        d["trailer"] = extra.get("trailer")
+        d["cast"] = extra.get("cast") or []
+        d["similar"] = extra.get("similar") or []
+    return d
+
+
+def _source_for(title: Title):
+    try:
+        return get_source(title.source)
+    except SourceError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@router.get("/health")
+async def health() -> dict[str, str]:
+    return {"status": "ok", "sources": ",".join(SOURCES.keys())}
+
+
+# ----------------- autentificare (public) -----------------
+
+
+class LoginBody(BaseModel):
+    password: str
+
+
+@auth_router.post("/login")
+async def auth_login(body: LoginBody, response: Response) -> dict[str, Any]:
+    if not await check_password(body.password):
+        raise HTTPException(status_code=401, detail="Parolă greșită")
+    if Config.APP_PASSWORD:
+        response.set_cookie(
+            COOKIE_NAME,
+            make_token(),
+            httponly=True,
+            samesite="lax",
+            max_age=30 * 24 * 3600,
+            secure=os.getenv("HTTPS_ON", "") == "1",
+        )
+    return {"ok": True, "auth_required": bool(Config.APP_PASSWORD)}
+
+
+@auth_router.post("/logout")
+async def auth_logout(response: Response) -> dict[str, str]:
+    response.delete_cookie(COOKIE_NAME)
+    return {"ok": "true"}
+
+
+@auth_router.get("/status")
+async def auth_status() -> dict[str, Any]:
+    return {"auth_required": bool(Config.APP_PASSWORD)}
+
+
+# ----------------- torrenți (Rutor) + TorrServer -----------------
+
+@router.get("/torrents")
+async def torrents_search(
+    q: str = Query(min_length=2),
+    year: int | None = None,
+    alt: str | None = Query(None, max_length=200),
+) -> list[dict[str, Any]]:
+    """Cautare magneți; `alt` = numele alternativ (rusesc ↔ original) pentru fallback."""
+    query = f"{q} {year}" if year else q
+    try:
+        return await torrent_service.search_torrents(query)
+    except SourceError as e:
+        if alt and alt.strip() and alt.strip() != q.strip():
+            alt_query = f"{alt.strip()} {year}" if year else alt.strip()
+            try:
+                return await torrent_service.search_torrents(alt_query)
+            except SourceError as e2:
+                raise HTTPException(status_code=502, detail=str(e2)) from e2
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+
+@router.post("/torrents/play")
+async def torrents_play(body: PlayBody) -> dict[str, Any]:
+    # source = magnet str (rutor/btdig) sau randul de torrent (dict cu torrent_url, Jackett/RuTracker)
+    src = body.magnet or body.source
+    if src is None:
+        raise HTTPException(status_code=422, detail="Lipsește magnetul/sursa")
+    if isinstance(src, PlaySource):
+        src = {"magnet": src.magnet, "torrent_url": src.torrent_url}
+    try:
+        return await torrent_service.torrserver_play(
+            src, body.index, season=body.season, episode=body.episode
+        )
+    except SourceError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+
+# ----------------- TorrServer: cache-ul de descărcări -----------------
+
+@router.get("/downloads")
+async def downloads_list() -> list[dict[str, Any]]:
+    try:
+        return await torrent_service.list_downloads()
+    except SourceError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+
+@router.delete("/downloads/{torrent_hash}")
+async def downloads_remove(torrent_hash: str) -> dict[str, str]:
+    try:
+        await torrent_service.remove_download(torrent_hash)
+        return {"ok": "true"}
+    except SourceError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+
+# ----------------- subtitrări -----------------
+
+@router.get("/subtitles/embed")
+async def subtitles_embed(url: str = Query(min_length=10)) -> Response:
+    """Convertește o subtitrare din arhiva torrentului (servită de TorrServer) în WebVTT."""
+    try:
+        vtt = await asyncio.to_thread(subtitles.fetch_torrserver_subtitle, url)
+    except SourceError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    return Response(content=vtt, media_type="text/vtt; charset=utf-8")
+
+
+@router.get("/subtitles/file")
+async def subtitles_file(
+    q: str = Query(min_length=2),
+    season: int | None = Query(None, ge=1),
+    episode: int | None = Query(None, ge=1),
+) -> Response:
+    """Subtitrare RU externă (OpenSubtitles, cu OS_API_KEY); cache pe disc."""
+    vtt = await asyncio.to_thread(subtitles.fetch_external_subtitle, q, season, episode)
+    if not vtt:
+        raise HTTPException(status_code=404, detail="Nicio subtitrare RU disponibilă")
+    return Response(content=vtt, media_type="text/vtt; charset=utf-8")
+
+
+@router.get("/subtitles/mux")
+async def subtitles_mux(url: str = Query(min_length=10)) -> dict[str, Any]:
+    """Starea extragerii subtitrărilor din MKV (pornește jobul în fundal la prima cerere):
+    {status: running|done|error, pct: 0-100}."""
+    try:
+        return await asyncio.to_thread(subtitles.mux_job_state, url)
+    except SourceError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+
+@router.get("/subtitles/mux/data")
+async def subtitles_mux_data(url: str = Query(min_length=10)) -> Response:
+    """Conținutul VTT al subtitrărilor extrase (dacă jobul e gata)."""
+    try:
+        vtt = await asyncio.to_thread(subtitles.mux_job_result, url)
+    except SourceError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    if not vtt:
+        raise HTTPException(status_code=404, detail="Încă nu e gata")
+    return Response(content=vtt, media_type="text/vtt; charset=utf-8")
+
+
+# ----------------- cautare / browsare -----------------
+
+@router.get("/search")
+async def search(
+    q: str = Query(min_length=2),
+    page: int = 1,
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    hits, errors = await aggregate_search(q, page)
+    out = []
+    for hit in hits:
+        title = await catalog.upsert_search_hit(db, hit)
+        out.append(_title_to_dict(title))
+    await db.commit()
+    return {"results": out, "errors": errors}
+
+
+@router.get("/browse")
+async def browse(
+    category: str = Query("films"),
+    page: int = Query(1, ge=1),
+    genre: int | None = Query(None),
+    year: int | None = Query(None, ge=1900, le=2100),
+    sort: str = Query("popularity", pattern="^(popularity|rating|date|title)$"),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """Browsare agregata: interogam toate sursele care suporta categorie si combinam rezultatele."""
+    sources = [s for s in SOURCES.values() if s.supports_browse(category)]
+    if not sources:
+        raise HTTPException(status_code=400, detail=f"Nicio sursa suporta categoria {category}")
+
+    tasks = [
+        asyncio.create_task(s.browse(category, page, genre=genre, year=year, sort=sort))
+        for s in sources
+    ]
+    done = await asyncio.gather(*tasks, return_exceptions=True)
+
+    hits: list[SearchHit] = []
+    errors: list[str] = []
+    for src, res in zip(sources, done):
+        if isinstance(res, Exception):
+            errors.append(f"{src.name}: {res}")
+            continue
+        hits.extend(res)
+
+    out = []
+    for hit in hits:
+        title = await catalog.upsert_search_hit(db, hit)
+        out.append(_title_to_dict(title))
+    await db.commit()
+    return {"results": out, "category": category, "page": page, "errors": errors}
+
+
+@router.get("/genres")
+async def genres(category: str = Query("films")) -> list[dict[str, Any]]:
+    tmdb = SOURCES.get("tmdb")
+    if tmdb is None or not hasattr(tmdb, "genres"):
+        return []
+    return await tmdb.genres(category)
+
+
+@router.post("/titles")
+async def titles_create(
+    body: HitBody,
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """Înregistrează un titlu dintr-un hit (folosit pentru 'titluri similare')."""
+    hit = SearchHit(**body.model_dump())
+    title = await catalog.upsert_search_hit(db, hit)
+    await db.commit()
+    return _title_to_dict(title)
+
+
+# ----------------- titlu -----------------
+
+async def _refresh_if_stale(db: AsyncSession, title: Title) -> Title:
+    # SQLite nu pastreaza tzinfo -> normalizam la UTC inainte de comparatie
+    loaded = title.detail_loaded_at
+    if loaded is not None and loaded.tzinfo is None:
+        loaded = loaded.replace(tzinfo=UTC)
+    fresh = (
+        loaded is not None
+        and datetime.now(UTC) - loaded < timedelta(hours=Config.DETAIL_CACHE_HOURS)
+        # rânduri vechi (înainte de extras): mai au o reîmprospătare de prins
+        and title.extra is not None
+    )
+    # serial cu episoade dar fără nume (detalii vechi) -> completăm o dată
+    if (
+        fresh
+        and title.title_type == TitleType.SERIES
+        and title.episodes
+        and not any(e.name for e in title.episodes)
+    ):
+        fresh = False
+    if fresh or not title.source_url:
+        return title
+    try:
+        detail = await _source_for(title).details(title.source_url)
+    except SourceError:
+        return title  # pastram ce avem in DB
+    title = await catalog.upsert_title_detail(db, detail)
+    await db.commit()
+    # repopulam colectia episoadelor abia adaugate (session-ul o avea goala in memorie)
+    await db.refresh(title, attribute_names=["episodes"])
+    return title
+
+
+@router.get("/title/{title_id}")
+async def title_detail(
+    title_id: int,
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    q = (
+        select(Title)
+        .where(Title.id == title_id)
+        .options(selectinload(Title.episodes))
+    )
+    title = (await db.scalars(q)).first()
+    if title is None:
+        raise HTTPException(status_code=404, detail="Titlul nu exista")
+    title = await _refresh_if_stale(db, title)
+    return _title_to_dict(title, with_details=True)
+
+
+# ----------------- watchlist -----------------
+
+@router.get("/watchlist")
+async def watchlist_list(db: AsyncSession = Depends(get_session)) -> list[dict[str, Any]]:
+    q = (
+        select(WatchlistItem)
+        .options(selectinload(WatchlistItem.title))
+        .order_by(WatchlistItem.created_at.desc())
+    )
+    items = (await db.scalars(q)).all()
+    return [
+        {"status": w.status.value, "title": _title_to_dict(w.title)} for w in items
+    ]
+
+
+@router.post("/watchlist")
+async def watchlist_add(
+    body: WatchlistBody,
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, str]:
+    if await catalog.get_title(db, body.title_id) is None:
+        raise HTTPException(status_code=404, detail="Titlul nu exista")
+
+    existing = (
+        await db.scalars(select(WatchlistItem).where(WatchlistItem.title_id == body.title_id))
+    ).first()
+    if existing:
+        existing.status = body.status
+    else:
+        db.add(WatchlistItem(title_id=body.title_id, status=body.status))
+    await db.commit()
+    return {"ok": "true"}
+
+
+@router.delete("/watchlist/{title_id}")
+async def watchlist_remove(title_id: int, db: AsyncSession = Depends(get_session)) -> dict[str, str]:
+    await db.execute(delete(WatchlistItem).where(WatchlistItem.title_id == title_id))
+    await db.commit()
+    return {"ok": "true"}
+
+
+# ----------------- istoric -----------------
+
+@router.get("/history")
+async def history_list(db: AsyncSession = Depends(get_session)) -> list[dict[str, Any]]:
+    # istoricul salveaza o linie la fiecare pozitie — grupam: doar ultima per titlu
+    q = (
+        select(HistoryItem)
+        .options(selectinload(HistoryItem.title))
+        .order_by(HistoryItem.updated_at.desc())
+    )
+    seen: set[int] = set()
+    items = []
+    for h in (await db.scalars(q)).all():
+        if h.title_id in seen:
+            continue
+        seen.add(h.title_id)
+        items.append(h)
+    return [
+        {
+            "title": _title_to_dict(h.title),
+            "season": h.season,
+            "episode": h.episode,
+            "position_seconds": h.position_seconds,
+            "duration_seconds": h.duration_seconds,
+            "updated_at": h.updated_at.isoformat(),
+        }
+        for h in items
+    ]
+
+
+@router.get("/title/{title_id}/history")
+async def title_history(
+    title_id: int,
+    db: AsyncSession = Depends(get_session),
+) -> list[dict[str, Any]]:
+    """Progresul per episod (pentru gridul de episoade)."""
+    q = (
+        select(HistoryItem)
+        .where(HistoryItem.title_id == title_id)
+        .order_by(HistoryItem.updated_at.desc())
+    )
+    return [
+        {
+            "season": h.season,
+            "episode": h.episode,
+            "position_seconds": h.position_seconds,
+            "duration_seconds": h.duration_seconds,
+            "updated_at": h.updated_at.isoformat(),
+        }
+        for h in (await db.scalars(q)).all()
+    ]
+
+
+@router.post("/history")
+async def history_save(
+    body: HistoryBody,
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, str]:
+    if await catalog.get_title(db, body.title_id) is None:
+        raise HTTPException(status_code=404, detail="Titlul nu exista")
+    # upsert: un singur rând per (titlu, sezon, episod) — fără spam la fiecare 10s
+    q = select(HistoryItem).where(HistoryItem.title_id == body.title_id)
+    q = q.where(HistoryItem.season.is_(None) if body.season is None else HistoryItem.season == body.season)
+    q = q.where(HistoryItem.episode.is_(None) if body.episode is None else HistoryItem.episode == body.episode)
+    item = (await db.scalars(q)).first()
+    if item is not None:
+        item.position_seconds = body.position_seconds
+        item.duration_seconds = body.duration_seconds
+    else:
+        db.add(
+            HistoryItem(
+                title_id=body.title_id,
+                season=body.season,
+                episode=body.episode,
+                position_seconds=body.position_seconds,
+                duration_seconds=body.duration_seconds,
+            )
+        )
+    await db.commit()
+    return {"ok": "true"}
