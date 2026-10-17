@@ -416,8 +416,10 @@ main#content {
   width: 34px; height: 34px; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
+  transition: transform 0.12s, filter 0.12s;
 }
-.torrent-row .btn-play::before { content: "▶"; font-size: 0.68rem; }
+.torrent-row .btn-play svg { fill: #111; margin-left: 1px; }
+.torrent-row .btn-play:hover { transform: scale(1.1); filter: brightness(1.05); }
 .resume-chip {
   margin: 1rem 1.8rem 0;
   font-size: 0.86rem; color: var(--sub);
@@ -625,10 +627,18 @@ main#content {
 .ep-play {
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
-  color: var(--accent); opacity: 0;
-  background: rgba(0, 0, 0, 0.35);
+  opacity: 0;
   transition: opacity 0.15s;
+  pointer-events: none;
 }
+.ep-play::before {
+  content: "";
+  width: 52px; height: 52px; border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
+}
+.ep-play svg { position: absolute; color: #111; transform: scale(1.18); }
+.ep-card:hover .ep-thumb img { opacity: 0.55; }
 .ep-card:hover .ep-play { opacity: 1; }
 .ep-progress {
   position: absolute; left: 0; right: 0; bottom: 0; height: 3px;
