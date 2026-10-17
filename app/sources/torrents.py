@@ -2,7 +2,7 @@ import asyncio
 import hashlib
 import re
 import time
-from urllib.parse import quote, unquote_plus
+from urllib.parse import quote, unquote_plus, urlparse
 from xml.etree import ElementTree
 
 from app.config import Config
@@ -201,6 +201,26 @@ def _proxies() -> dict | None:
 
 
 # ----------------- TorrServer: autentificare opțională -----------------
+
+def same_origin(url: str, base: str | None) -> bool:
+    """True doar dacă `url` e http(s) și are exact schema, hostul și portul lui `base`
+    (credențialele user:parolă@ sunt ignorate)."""
+    if not base:
+        return False
+    try:
+        u, b = urlparse(url), urlparse(base)
+        u_port = u.port or (443 if u.scheme == "https" else 80)
+        b_port = b.port or (443 if b.scheme == "https" else 80)
+    except ValueError:
+        return False
+    return (
+        u.scheme in ("http", "https")
+        and u.scheme == b.scheme
+        and bool(u.hostname)
+        and u.hostname == b.hostname
+        and u_port == b_port
+    )
+
 
 def ts_auth() -> tuple[str, str] | None:
     """(user, parolă) dacă TorrServer-ul e protejat de parolă."""
@@ -631,13 +651,36 @@ async def torrserver_play(
     if not magnet:
         if not torrent_url:
             raise SourceError("Niciun magnet și niciun .torrent")
-        # .torrent (Jackett/RuTracker) -> infohash
-        import requests
+        # .torrent (Jackett/RuTracker) -> infohash; doar de pe Jackett-ul configurat
+        if not same_origin(torrent_url, Config.TORZNAB_URL):
+            raise SourceError("Link .torrent nepermis (acceptat doar de pe Jackett/TORZNAB_URL)")
 
-        r = requests.get(torrent_url, headers=_mk_headers(), timeout=40)
-        r.raise_for_status()
-        h = _infohash_from_torrent(r.content)
-        magnet = f"magnet:?xt=urn:btih:{h}"
+        def _download() -> bytes | str:
+            import requests
+
+            # fără redirect automat: unii indexeri din Jackett redirecționează /dl/ spre magnet:
+            r = requests.get(torrent_url, headers=_mk_headers(), timeout=40, allow_redirects=False)
+            location = r.headers.get("Location", "")
+            if r.is_redirect and location.startswith("magnet:"):
+                return location
+            if r.is_redirect:
+                r = requests.get(torrent_url, headers=_mk_headers(), timeout=40)
+            r.raise_for_status()
+            return r.content
+
+        try:
+            content = await asyncio.to_thread(_download)
+        except Exception as e:  # noqa: BLE001 — rețea/HTTP -> 502 cu mesaj, nu 500
+            raise SourceError(f"Nu pot descărca .torrent de pe Jackett: {e}") from e
+        if isinstance(content, str):
+            magnet = content
+            h = _hash_from_magnet(magnet)
+        else:
+            try:
+                h = _infohash_from_torrent(content)
+            except Exception as e:  # noqa: BLE001 — răspuns care nu e .torrent valid
+                raise SourceError("Jackett nu a returnat un fișier .torrent valid") from e
+            magnet = f"magnet:?xt=urn:btih:{h}"
     else:
         h = _hash_from_magnet(magnet)
 

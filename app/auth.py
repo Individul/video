@@ -1,6 +1,7 @@
 """Autentificare simplă cu parolă (pentru publicare pe web).
 Fără APP_PASSWORD setată, totul e deschis — uz local."""
 
+import asyncio
 import hashlib
 import hmac
 import time
@@ -10,23 +11,37 @@ from fastapi import HTTPException, Request
 from app.config import Config
 
 COOKIE_NAME = "vid_auth"
+TOKEN_MAX_AGE = 30 * 24 * 3600  # o sesiune ține 30 de zile, apoi se cere din nou parola
 _last_fail = 0.0
 
 
 def _secret() -> bytes:
-    return (Config.APP_SECRET or Config.APP_PASSWORD or "vid-local-dev").encode()
+    # parola intră în secret: schimbarea ei invalidează toate sesiunile vechi
+    return f"{Config.APP_SECRET or ''}|{Config.APP_PASSWORD or 'vid-local-dev'}".encode()
 
 
-def make_token() -> str:
-    return hmac.new(_secret(), b"vid-auth-v1", hashlib.sha256).hexdigest()
+def _sign(issued: str) -> str:
+    return hmac.new(_secret(), f"vid-auth-v2:{issued}".encode(), hashlib.sha256).hexdigest()
 
 
-def token_ok(token: str | None) -> bool:
-    return bool(token) and hmac.compare_digest(token, make_token())
+def make_token(now: float | None = None) -> str:
+    """Token „<moment emitere>.<semnătură>” — expiră după TOKEN_MAX_AGE."""
+    issued = str(int(time.time() if now is None else now))
+    return f"{issued}.{_sign(issued)}"
+
+
+def token_ok(token: str | None, now: float | None = None) -> bool:
+    if not token or "." not in token:
+        return False
+    issued, _, sig = token.partition(".")
+    if not issued.isdigit() or not hmac.compare_digest(sig.encode(), _sign(issued).encode()):
+        return False
+    age = (time.time() if now is None else now) - int(issued)
+    return -300 <= age <= TOKEN_MAX_AGE  # 5 min toleranță pentru ceas decalat
 
 
 async def require_auth(request: Request) -> None:
-    """Dependență FastAPI: 401 dacă parola e activă și cookie-ul lipsește/greșit."""
+    """Dependență FastAPI: 401 dacă parola e activă și cookie-ul lipsește/greșit/expirat."""
     if not Config.APP_PASSWORD:
         return
     if not token_ok(request.cookies.get(COOKIE_NAME)):
@@ -38,12 +53,13 @@ async def check_password(password: str) -> bool:
     global _last_fail
     if not Config.APP_PASSWORD:
         return True  # autentificare dezactivată (uz local)
-    if hmac.compare_digest(password, Config.APP_PASSWORD):
+    # bytes: compare_digest pe str acceptă doar ASCII (parolă cu diacritice -> TypeError)
+    if hmac.compare_digest(password.encode(), Config.APP_PASSWORD.encode()):
         _last_fail = 0.0
         return True
-    # după o încercare greșită, următoarea așteaptă 1s (nu blochează, doar încetinește)
+    # după o încercare greșită, următoarea așteaptă 1s (fără să blocheze celelalte cereri)
     now = time.monotonic()
     if now - _last_fail < 1.0:
-        time.sleep(1.0)
+        await asyncio.sleep(1.0)
     _last_fail = now
     return False

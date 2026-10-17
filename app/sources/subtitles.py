@@ -9,7 +9,7 @@ from pathlib import Path
 
 from app.config import ROOT, Config
 from app.sources.base import SourceError
-from app.sources.torrents import ts_auth
+from app.sources.torrents import same_origin, ts_auth
 
 SUBTITLE_RE = re.compile(r"\.(srt|ass|ssa|vtt)$", re.I)
 _RU_NAME_RE = re.compile(r"\b(ru|rus|russian|russia|russe?|русск\w*|перевод)\b|руссуб|субтитры", re.I)
@@ -93,11 +93,7 @@ def to_vtt(raw: bytes, filename: str = "") -> str:
 def fetch_torrserver_subtitle(url: str) -> str:
     """Descarcă un fișier de subtitrare servit de TorrServer și îl convertește."""
     import requests
-    from urllib.parse import urlparse
-
-    host = urlparse(url).netloc
-    if host not in Config.TORRSERVER_URL.replace("http://", "").replace("https://", ""):
-        raise SourceError(f"URL de subtitrare nepermis: {host}")
+    _check_torrserver_host(url)
 
     r = requests.get(
         url, headers={"User-Agent": Config.USER_AGENT}, auth=ts_auth(), timeout=(5, 60)
@@ -126,11 +122,9 @@ def _mux_cache_path(url: str) -> Path:
 
 
 def _check_torrserver_host(url: str) -> None:
-    from urllib.parse import urlparse
-
-    host = urlparse(url).netloc.split("@")[-1]  # ignoră user:parolă@ dacă e prezent
-    if host not in Config.TORRSERVER_URL.replace("http://", "").replace("https://", ""):
-        raise SourceError(f"URL de subtitrare nepermis: {host}")
+    """Acceptă doar URL-uri de pe TorrServer-ul configurat (fără file://, alte hosturi etc.)."""
+    if not same_origin(url, Config.TORRSERVER_URL):
+        raise SourceError("URL de subtitrare nepermis (nu e de pe TorrServer)")
 
 
 def _ffmpeg_auth_args() -> list[str]:

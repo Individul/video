@@ -10,7 +10,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.auth import COOKIE_NAME, check_password, make_token, require_auth
+from app.auth import COOKIE_NAME, TOKEN_MAX_AGE, check_password, make_token, require_auth
 from app.config import Config
 from app.db import get_session
 from app.models import (
@@ -139,7 +139,7 @@ async def auth_login(body: LoginBody, response: Response) -> dict[str, Any]:
             make_token(),
             httponly=True,
             samesite="lax",
-            max_age=30 * 24 * 3600,
+            max_age=TOKEN_MAX_AGE,
             secure=os.getenv("HTTPS_ON", "") == "1",
         )
     return {"ok": True, "auth_required": bool(Config.APP_PASSWORD)}
