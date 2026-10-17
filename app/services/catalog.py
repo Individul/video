@@ -19,6 +19,8 @@ async def upsert_search_hit(session: AsyncSession, hit: SearchHit) -> Title:
     title.year = hit.year or title.year
     title.poster = hit.poster or title.poster
     title.category = hit.category or title.category
+    if hit.rating:
+        title.rating = hit.rating  # nota TMDB vine proaspătă la fiecare căutare/browsare
     if hit.title_type:
         title.title_type = TitleType(hit.title_type)
     await session.flush()

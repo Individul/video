@@ -37,9 +37,10 @@ async def test_upsert_search_hit_creates_and_updates(session_factory):
     async with session_factory() as s:
         hit = SearchHit(source="tmdb", name="Test", source_url="https://x/test.html", year=2000)
         t1 = await upsert_search_hit(s, hit)
-        t2 = await upsert_search_hit(s, SearchHit(source="tmdb", name="Test", source_url="https://x/test.html", poster="p.png"))
+        t2 = await upsert_search_hit(s, SearchHit(source="tmdb", name="Test", source_url="https://x/test.html", poster="p.png", rating=7.7))
         assert t1.id == t2.id
         assert t2.poster == "p.png"
+        assert t2.rating == 7.7  # nota se salvează din hit, fără să deschidem detaliile
 
 
 async def test_upsert_detail_fills_everything(session_factory):
