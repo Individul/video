@@ -9,7 +9,7 @@ from pathlib import Path
 
 from app.config import ROOT, Config
 from app.sources.base import SourceError
-from app.sources.torrents import ts_auth
+from app.sources.torrents import same_origin, ts_auth, ts_internal_url
 
 SUBTITLE_RE = re.compile(r"\.(srt|ass|ssa|vtt)$", re.I)
 _RU_NAME_RE = re.compile(r"\b(ru|rus|russian|russia|russe?|русск\w*|перевод)\b|руссуб|субтитры", re.I)
@@ -93,11 +93,7 @@ def to_vtt(raw: bytes, filename: str = "") -> str:
 def fetch_torrserver_subtitle(url: str) -> str:
     """Descarcă un fișier de subtitrare servit de TorrServer și îl convertește."""
     import requests
-    from urllib.parse import urlparse
-
-    host = urlparse(url).netloc
-    if host not in Config.TORRSERVER_URL.replace("http://", "").replace("https://", ""):
-        raise SourceError(f"URL de subtitrare nepermis: {host}")
+    url = _torrserver_url(url)
 
     r = requests.get(
         url, headers={"User-Agent": Config.USER_AGENT}, auth=ts_auth(), timeout=(5, 60)
@@ -125,12 +121,13 @@ def _mux_cache_path(url: str) -> Path:
     return subs_dir / ("mux-" + hashlib.sha1(url.encode()).hexdigest() + ".vtt")
 
 
-def _check_torrserver_host(url: str) -> None:
-    from urllib.parse import urlparse
-
-    host = urlparse(url).netloc.split("@")[-1]  # ignoră user:parolă@ dacă e prezent
-    if host not in Config.TORRSERVER_URL.replace("http://", "").replace("https://", ""):
-        raise SourceError(f"URL de subtitrare nepermis: {host}")
+def _torrserver_url(url: str) -> str:
+    """URL-ul intern TorrServer pentru `url` (traduce căile proxy /ts/...); acceptă doar
+    URL-uri de pe TorrServer-ul configurat (fără file://, alte hosturi etc.)."""
+    url = ts_internal_url(url)
+    if not same_origin(url, Config.TORRSERVER_URL):
+        raise SourceError("URL de subtitrare nepermis (nu e de pe TorrServer)")
+    return url
 
 
 def _ffmpeg_auth_args() -> list[str]:
@@ -236,7 +233,7 @@ def mux_job_state(url: str) -> dict:
         # fără proces long-running pe Vercel — frontendul cade pe subtitrările externe
         return {"status": "error", "pct": 0,
                 "error": "extragerea din MKV e disponibilă doar local / pe VPS"}
-    _check_torrserver_host(url)
+    url = _torrserver_url(url)
     cache = _mux_cache_path(url)
     if cache.is_file() and cache.stat().st_size > 0:
         return {"status": "done", "pct": 100}
@@ -259,7 +256,7 @@ def mux_job_state(url: str) -> dict:
 
 def mux_job_result(url: str) -> str | None:
     """Conținutul VTT dacă extragerea e gata (cache pe disc), altfel None."""
-    _check_torrserver_host(url)
+    url = _torrserver_url(url)
     cache = _mux_cache_path(url)
     if cache.is_file() and cache.stat().st_size > 0:
         return cache.read_text(encoding="utf-8")

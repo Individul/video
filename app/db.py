@@ -3,7 +3,7 @@ from collections.abc import AsyncIterator
 from datetime import datetime
 from pathlib import Path
 
-from sqlalchemy import text
+from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import ROOT, Config
@@ -14,8 +14,8 @@ SessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=
 
 
 async def _columns(conn, table: str) -> set[str]:
-    rows = await conn.execute(text(f"PRAGMA table_info({table})"))
-    return {r[1] for r in rows}
+    # inspect() merge pe orice dialect (SQLite local, Postgres/Supabase pe Vercel)
+    return await conn.run_sync(lambda c: {col["name"] for col in inspect(c).get_columns(table)})
 
 
 async def _migrate(conn) -> None:

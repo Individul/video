@@ -2,7 +2,7 @@ import asyncio
 import hashlib
 import re
 import time
-from urllib.parse import quote, unquote_plus
+from urllib.parse import quote, unquote_plus, urlparse
 from xml.etree import ElementTree
 
 from app.config import Config
@@ -202,6 +202,26 @@ def _proxies() -> dict | None:
 
 # ----------------- TorrServer: autentificare opțională -----------------
 
+def same_origin(url: str, base: str | None) -> bool:
+    """True doar dacă `url` e http(s) și are exact schema, hostul și portul lui `base`
+    (credențialele user:parolă@ sunt ignorate)."""
+    if not base:
+        return False
+    try:
+        u, b = urlparse(url), urlparse(base)
+        u_port = u.port or (443 if u.scheme == "https" else 80)
+        b_port = b.port or (443 if b.scheme == "https" else 80)
+    except ValueError:
+        return False
+    return (
+        u.scheme in ("http", "https")
+        and u.scheme == b.scheme
+        and bool(u.hostname)
+        and u.hostname == b.hostname
+        and u_port == b_port
+    )
+
+
 def ts_auth() -> tuple[str, str] | None:
     """(user, parolă) dacă TorrServer-ul e protejat de parolă."""
     if not Config.TORRSERVER_AUTH or ":" not in Config.TORRSERVER_AUTH:
@@ -211,8 +231,14 @@ def ts_auth() -> tuple[str, str] | None:
 
 
 def ts_stream_url(url: str) -> str:
-    """URL-ul de stream predat browserului; cu parolă activă, înglobează
-    credențialele (http://user:pass@host/...) ca video elementul să le trimită."""
+    """URL-ul de stream predat browserului.
+
+    Cu STREAM_PROXY_PATH (VPS): cale relativă la portal (/ts/stream/...), pe care Caddy
+    o trimite la TorrServer-ul intern după ce verifică autentificarea — parola TorrServer
+    nu ajunge în browser. Altfel (local): URL-ul direct, cu credențialele înglobate."""
+    if Config.STREAM_PROXY_PATH:
+        u = urlparse(url)
+        return f"{Config.STREAM_PROXY_PATH}{u.path}" + (f"?{u.query}" if u.query else "")
     auth = ts_auth()
     if not auth:
         return url
@@ -220,6 +246,15 @@ def ts_stream_url(url: str) -> str:
     if url.startswith(f"{prefix}{auth[0]}:"):
         return url  # deja înglobat
     return url.replace(prefix, f"{prefix}{auth[0]}:{auth[1]}@", 1)
+
+
+def ts_internal_url(url: str) -> str:
+    """Inversul lui ts_stream_url pentru căile proxy: /ts/stream/... -> TORRSERVER_URL/stream/...
+    (serverul vorbește direct cu TorrServer-ul intern). Restul URL-urilor rămân neschimbate."""
+    prefix = Config.STREAM_PROXY_PATH
+    if prefix and url.startswith(prefix + "/"):
+        return Config.TORRSERVER_URL + url[len(prefix):]
+    return url
 
 
 # ----------------- Jackett / Torznab (optional, normalizat) -----------------
@@ -291,7 +326,8 @@ def _torznab_indexer_list() -> list[tuple[str, str]]:
     )
     out: list[tuple[str, str]] = []
     try:
-        r = requests.get(url, headers=_mk_headers(), proxies=_proxies(), timeout=15)
+        # Jackett e serviciu intern (docker) — niciodată prin PROXY-ul extern
+        r = requests.get(url, headers=_mk_headers(), timeout=15)
         r.raise_for_status()
         root = ElementTree.fromstring(r.content)
         for ix in root.iter("indexer"):
@@ -319,7 +355,7 @@ def _search_torznab(query: str, limit: int) -> list[dict]:
             f"{Config.TORZNAB_URL.rstrip('/')}/api/v2.0/indexers/{idx_id}/results/torznab/api"
             f"?apikey={Config.TORZNAB_API_KEY}&q={quote(query)}&limit={limit}"
         )
-        r = requests.get(url, headers=_mk_headers(), proxies=_proxies(), timeout=25)
+        r = requests.get(url, headers=_mk_headers(), timeout=25)
         r.raise_for_status()
         out = _parse_torznab(r.content)
         for x in out:
@@ -631,13 +667,36 @@ async def torrserver_play(
     if not magnet:
         if not torrent_url:
             raise SourceError("Niciun magnet și niciun .torrent")
-        # .torrent (Jackett/RuTracker) -> infohash
-        import requests
+        # .torrent (Jackett/RuTracker) -> infohash; doar de pe Jackett-ul configurat
+        if not same_origin(torrent_url, Config.TORZNAB_URL):
+            raise SourceError("Link .torrent nepermis (acceptat doar de pe Jackett/TORZNAB_URL)")
 
-        r = requests.get(torrent_url, headers=_mk_headers(), timeout=40)
-        r.raise_for_status()
-        h = _infohash_from_torrent(r.content)
-        magnet = f"magnet:?xt=urn:btih:{h}"
+        def _download() -> bytes | str:
+            import requests
+
+            # fără redirect automat: unii indexeri din Jackett redirecționează /dl/ spre magnet:
+            r = requests.get(torrent_url, headers=_mk_headers(), timeout=40, allow_redirects=False)
+            location = r.headers.get("Location", "")
+            if r.is_redirect and location.startswith("magnet:"):
+                return location
+            if r.is_redirect:
+                r = requests.get(torrent_url, headers=_mk_headers(), timeout=40)
+            r.raise_for_status()
+            return r.content
+
+        try:
+            content = await asyncio.to_thread(_download)
+        except Exception as e:  # noqa: BLE001 — rețea/HTTP -> 502 cu mesaj, nu 500
+            raise SourceError(f"Nu pot descărca .torrent de pe Jackett: {e}") from e
+        if isinstance(content, str):
+            magnet = content
+            h = _hash_from_magnet(magnet)
+        else:
+            try:
+                h = _infohash_from_torrent(content)
+            except Exception as e:  # noqa: BLE001 — răspuns care nu e .torrent valid
+                raise SourceError("Jackett nu a returnat un fișier .torrent valid") from e
+            magnet = f"magnet:?xt=urn:btih:{h}"
     else:
         h = _hash_from_magnet(magnet)
 

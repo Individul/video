@@ -1,0 +1,24 @@
+# HTTPS automat (Let's Encrypt) pentru domeniul din .env (DOMAIN=cinema.exemplu.ro)
+{$DOMAIN} {
+	# stream-uri video: doar după login în portal; parola nu ajunge niciodată la TorrServer
+	handle /ts/stream/* {
+		forward_auth vid:8000 {
+			# /api/health cere cookie-ul portalului: 200 = logat, 401 = refuzat
+			uri /api/health
+		}
+		uri strip_prefix /ts
+		reverse_proxy torrserver:8090 {
+			flush_interval -1 # video fără buffering
+		}
+	}
+
+	# restul TorrServer (interfața lui web) nu e accesibil din internet
+	handle /ts/* {
+		respond 404
+	}
+
+	handle {
+		encode zstd gzip
+		reverse_proxy vid:8000
+	}
+}
