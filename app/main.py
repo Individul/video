@@ -17,7 +17,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Vid — agregator filme/seriale cu traducere rusa", lifespan=lifespan)
+app = FastAPI(title="Cinema — agregator filme/seriale cu traducere rusa", lifespan=lifespan)
 app.include_router(auth_router)
 app.include_router(router)
 app.mount("/static", StaticFiles(directory=_STATIC), name="static")

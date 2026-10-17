@@ -1,4 +1,4 @@
-# vid.local — agregator filme & seriale (TMDB + TorrServer)
+# Cinema — agregator filme & seriale (TMDB + TorrServer)
 
 Aplicatie **locala, personala** (FastAPI + SQLite + UI web): catalog de filme/seriale cu
 descrieri in **rusa** de la TMDB, cautare, browsare, watchlist, istoric ("continua de unde
