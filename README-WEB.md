@@ -14,7 +14,7 @@ browser ──HTTPS──▶ Caddy ──▶ vid (portal, parolă)
 - Video-ul trece prin Caddy. Caddy verifică întâi cookie-ul portalului, deci fără login nu se poate viziona nimic.
 - Interfața TorrServer nu e accesibilă din internet. Interfața Jackett se deschide doar prin tunel SSH.
 
-Gândit pentru: 1 vCPU, 1,5 GB RAM, 10 GB disc, 1 utilizator. Fiecare container are o limită de memorie, iar scriptul de instalare adaugă 2 GB swap.
+Gândit pentru: 1 vCPU, 1,5 GB RAM, 10 GB disc, 1 utilizator. Fiecare container are o limită de memorie, iar scriptul de instalare adaugă 1 GB swap.
 
 ## 0. Înainte de cumpărare
 
@@ -29,7 +29,8 @@ Gândit pentru: 1 vCPU, 1,5 GB RAM, 10 GB disc, 1 utilizator. Fiecare container 
 ssh root@IP_VPS
 git clone -b vps https://github.com/Individul/video.git /opt/vid
 cd /opt/vid
-bash deploy/setup-vps.sh      # update, swap 2 GB, firewall, Docker
+bash deploy/setup-vps.sh      # update, swap 1 GB, Docker
+bash deploy/secure-vps.sh     # SSH doar cu cheie + firewall
 ```
 
 Recomandat: autentificare SSH doar cu cheie. Copiezi cheia cu `ssh-copy-id root@IP_VPS`, apoi setezi `PasswordAuthentication no` în `/etc/ssh/sshd_config` și rulezi `systemctl restart ssh`.
