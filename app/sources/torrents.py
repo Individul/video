@@ -815,7 +815,24 @@ async def torrent_stats(torrent_hash: str) -> dict:
         t = await asyncio.to_thread(_ts_request, "get", torrent_hash.lower()) or {}
     except Exception as e:  # noqa: BLE001
         raise SourceError(f"TorrServer nu răspunde ({e}).") from e
+
+    def _cache() -> dict:
+        import requests
+
+        r = requests.post(
+            f"{Config.TORRSERVER_URL}/cache", json={"action": "get", "hash": torrent_hash.lower()},
+            headers={"User-Agent": Config.USER_AGENT}, auth=ts_auth(), timeout=10,
+        )
+        r.raise_for_status()
+        return r.json() or {}
+
+    try:  # capacitatea și umplerea cache-ului vin din /cache, nu din /torrents
+        cache = await asyncio.to_thread(_cache)
+    except Exception:  # noqa: BLE001 — informație în plus, nu obligatorie
+        cache = {}
     return {
+        "cache_capacity": cache.get("Capacity") or 0,
+        "cache_filled": cache.get("Filled") or 0,
         "status": t.get("stat_string") or "",
         "download_bps": int((t.get("download_speed") or 0) * 8),
         "upload_bps": int((t.get("upload_speed") or 0) * 8),
@@ -823,7 +840,6 @@ async def torrent_stats(torrent_hash: str) -> dict:
         "peers_total": t.get("total_peers") or 0,
         "seeders": t.get("connected_seeders") or 0,
         "preloaded": t.get("preloaded_bytes") or 0,  # cât e încărcat înaintea poziției curente
-        "cache_size": t.get("preload_size") or 0,
         "read": t.get("bytes_read") or 0,
         "size": t.get("torrent_size") or 0,
     }

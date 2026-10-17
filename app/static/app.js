@@ -1151,13 +1151,13 @@ async function refreshStats() {
   const video = $("#video");
   const dur = video && Number.isFinite(video.duration) ? video.duration : 0;
   const bitrate = dur && cur.size ? (cur.size * 8) / dur : 0; // debitul mediu al filmului
-  const cacheFull = s.cache_size && s.preloaded >= s.cache_size * 0.8;
+  const cacheFull = s.cache_capacity && s.cache_filled >= s.cache_capacity * 0.85; // TorrServer a umplut cache-ul: e înainte
   const ahead = bitrate ? Math.round((s.preloaded * 8) / bitrate) : 0; // secunde încărcate înainte
   let verdict, cls;
   if (cacheFull || (bitrate && s.download_bps >= bitrate * 1.3)) {
     verdict = "Torrentul ține pasul cu filmul.";
     cls = "ok";
-  } else if (bitrate && s.download_bps < bitrate && s.preloaded < (s.cache_size || 1) * 0.3) {
+  } else if (bitrate && s.download_bps < bitrate && s.preloaded < (s.cache_capacity || 1) * 0.3) {
     verdict = "Torrentul descarcă mai încet decât debitul filmului — poate apărea buffering. Alege o versiune cu mai mulți seederi sau 1080p în loc de 4K.";
     cls = "bad";
   } else {
@@ -1171,7 +1171,7 @@ async function refreshStats() {
       <dl class="facts cin-facts">
         <dt>Viteză descărcare</dt><dd>${fmtMbit(s.download_bps)} Mbit/s</dd>
         <dt>Debitul filmului</dt><dd>${bitrate ? `~${fmtMbit(bitrate)} Mbit/s` : "—"}</dd>
-        <dt>Încărcat în avans</dt><dd>${fmtMB(s.preloaded)}${s.cache_size ? ` din ${fmtMB(s.cache_size)} cache` : ""}${ahead ? ` (~${ahead} s de film)` : ""}</dd>
+        <dt>Încărcat în avans</dt><dd>${fmtMB(s.preloaded)}${s.cache_capacity ? ` (cache ${fmtMB(s.cache_filled)} din ${fmtMB(s.cache_capacity)})` : ""}${ahead ? ` (~${ahead} s de film)` : ""}</dd>
         <dt>Peers activi</dt><dd>${s.peers_active} din ${s.peers_total} (seederi ${s.seeders})</dd>
         <dt>Upload</dt><dd>${fmtMbit(s.upload_bps)} Mbit/s</dd>
         <dt>Citit până acum</dt><dd>${fmtMB(s.read)}</dd>
