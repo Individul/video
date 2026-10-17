@@ -271,20 +271,76 @@ def _parse_torznab(xml_bytes: bytes) -> list[dict]:
     return out
 
 
-def _search_torznab(query: str, limit: int) -> list[dict]:
-    """Interogare Torznab (Jackett): returneaza magneți sau linkuri .torrent.
-    Pentru intrarile fara magnet (ex. RuTracker prin Jackett) descarcam .torrent-ul
-    si calculam infohash-ul ca sa fie compatibil cu TorrServer."""
-    import requests
+_TORZNAB_INDEXER_CACHE: list[tuple[str, str]] = []
+_TORZNAB_INDEXER_TS = 0.0
 
-    indexer = Config.TORZNAB_INDEXER or "all"
+
+def _torznab_indexer_list() -> list[tuple[str, str]]:
+    """[(id, nume-scurt)] pentru indexeri configurați în Jackett; cache 10 min."""
+    import time as _time
+
+    global _TORZNAB_INDEXER_CACHE, _TORZNAB_INDEXER_TS
+    import requests
+    from xml.etree import ElementTree
+
+    if _TORZNAB_INDEXER_CACHE and _time.time() - _TORZNAB_INDEXER_TS < 600:
+        return _TORZNAB_INDEXER_CACHE
     url = (
-        f"{Config.TORZNAB_URL.rstrip('/')}/api/v2.0/indexers/{indexer}/results/torznab/api"
-        f"?apikey={Config.TORZNAB_API_KEY}&q={quote(query)}&limit={limit}"
+        f"{Config.TORZNAB_URL.rstrip('/')}/api/v2.0/indexers/all/results/torznab/api"
+        f"?apikey={Config.TORZNAB_API_KEY}&t=indexers"
     )
-    r = requests.get(url, headers=_mk_headers(), proxies=_proxies(), timeout=25)
-    r.raise_for_status()
-    return _parse_torznab(r.content)
+    out: list[tuple[str, str]] = []
+    try:
+        r = requests.get(url, headers=_mk_headers(), proxies=_proxies(), timeout=15)
+        r.raise_for_status()
+        root = ElementTree.fromstring(r.content)
+        for ix in root.iter("indexer"):
+            if ix.get("configured") == "true":
+                idx_id = ix.get("id") or "all"
+                title = (ix.findtext("title") or idx_id).split(".")[0].strip()
+                out.append((idx_id, title))
+    except Exception:  # noqa: BLE001 — cădem pe „all"
+        pass
+    if not out:
+        out = [(Config.TORZNAB_INDEXER or "all", "jackett")]
+    _TORZNAB_INDEXER_CACHE, _TORZNAB_INDEXER_TS = out, _time.time()
+    return out
+
+
+def _search_torznab(query: str, limit: int) -> list[dict]:
+    """Interogare Torznab (Jackett) pe fiecare indexer configurat, în paralel.
+    Rezultatele poartă numele sursei; un indexer lent/căzut nu blochează restul."""
+    import requests
+    from concurrent.futures import ThreadPoolExecutor
+
+    def _one(idx: tuple[str, str]) -> list[dict]:
+        idx_id, label = idx
+        url = (
+            f"{Config.TORZNAB_URL.rstrip('/')}/api/v2.0/indexers/{idx_id}/results/torznab/api"
+            f"?apikey={Config.TORZNAB_API_KEY}&q={quote(query)}&limit={limit}"
+        )
+        r = requests.get(url, headers=_mk_headers(), proxies=_proxies(), timeout=25)
+        r.raise_for_status()
+        out = _parse_torznab(r.content)
+        for x in out:
+            x["indexer"] = label
+        return out
+
+    results: list[dict] = []
+    indexers = _torznab_indexer_list()
+    with ThreadPoolExecutor(max_workers=min(6, len(indexers))) as pool:
+        futures = [pool.submit(_try_indexer, _one, idx) for idx in indexers]
+        for f in futures:
+            results.extend(f.result())
+    results.sort(key=lambda r: (r.get("seeds") or 0), reverse=True)
+    return results
+
+
+def _try_indexer(fn, idx) -> list[dict]:
+    try:
+        return fn(idx)
+    except Exception:  # noqa: BLE001 — indexer individual căzut
+        return []
 
 
 def _human_size(n: int) -> str:
