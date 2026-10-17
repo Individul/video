@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Securitatea VPS-ului (rulezi o singură dată, ca root, DUPĂ ce ai verificat că intri cu cheia SSH):
+# Securitatea VPS-ului (rulezi o singură dată, ca root):
 #   bash deploy/secure-vps.sh
-# Face: SSH doar cu cheie (fără parolă), firewall cu porturile strict necesare.
+# Face: firewall cu porturile strict necesare + fail2ban (blochează IP-urile care ghicesc parola SSH).
+# Logarea cu parolă rămâne activă. Pentru SSH doar cu cheie: KEY_ONLY=1 bash deploy/secure-vps.sh
 set -euo pipefail
 
 if [ "$(id -u)" -ne 0 ]; then
@@ -9,23 +10,36 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
-if [ ! -s /root/.ssh/authorized_keys ]; then
-  echo "Nu există nicio cheie în /root/.ssh/authorized_keys — oprit, ca să nu rămâi blocat afară." >&2
-  exit 1
-fi
+echo "==> fail2ban: după 5 parole greșite în 10 min, IP-ul e blocat 1 oră"
+DEBIAN_FRONTEND=noninteractive apt-get -y install fail2ban ufw
+cat > /etc/fail2ban/jail.d/cinema-sshd.local <<'CONF'
+[sshd]
+enabled  = true
+backend  = systemd
+maxretry = 5
+findtime = 10m
+bantime  = 1h
+CONF
+systemctl enable --now fail2ban
+systemctl restart fail2ban
 
-echo "==> SSH: doar autentificare cu cheie"
-# 00- ca să fie citit primul (în sshd prima valoare găsită câștigă, ex. față de 50-cloud-init.conf)
-cat > /etc/ssh/sshd_config.d/00-cinema.conf <<'CONF'
+if [ "${KEY_ONLY:-0}" = "1" ]; then
+  if [ ! -s /root/.ssh/authorized_keys ]; then
+    echo "Nicio cheie în /root/.ssh/authorized_keys — nu dezactivez parola, ai rămâne blocat afară." >&2
+    exit 1
+  fi
+  echo "==> SSH: doar autentificare cu cheie"
+  # 00- ca să fie citit primul (în sshd prima valoare găsită câștigă, ex. față de 50-cloud-init.conf)
+  cat > /etc/ssh/sshd_config.d/00-cinema.conf <<'CONF'
 PasswordAuthentication no
 KbdInteractiveAuthentication no
 PermitRootLogin prohibit-password
 CONF
-sshd -t
-systemctl reload ssh
+  sshd -t
+  systemctl reload ssh
+fi
 
 echo "==> Firewall: SSH, HTTP/HTTPS (Caddy), 6881 (peers TorrServer)"
-DEBIAN_FRONTEND=noninteractive apt-get -y install ufw
 ufw default deny incoming
 ufw default allow outgoing
 ufw allow OpenSSH
@@ -38,6 +52,6 @@ ufw --force enable
 # Notă: porturile publicate de Docker ocolesc ufw — de aceea în docker-compose.yml
 # doar Caddy și 6881 sunt publice; Jackett e legat de 127.0.0.1, restul nu au porturi.
 
-sshd -T | grep -E '^(passwordauthentication|permitrootlogin) '
 ufw status verbose
-echo "==> Gata. Verifică dintr-o fereastră NOUĂ că intri în continuare cu cheia, înainte s-o închizi pe asta."
+fail2ban-client status sshd
+echo "==> Gata."

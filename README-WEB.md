@@ -30,10 +30,10 @@ ssh root@IP_VPS
 git clone -b vps https://github.com/Individul/video.git /opt/vid
 cd /opt/vid
 bash deploy/setup-vps.sh      # update, swap 1 GB, Docker
-bash deploy/secure-vps.sh     # SSH doar cu cheie + firewall
+bash deploy/secure-vps.sh     # firewall + fail2ban (parola SSH rămâne activă)
 ```
 
-Recomandat: autentificare SSH doar cu cheie. Copiezi cheia cu `ssh-copy-id root@IP_VPS`, apoi setezi `PasswordAuthentication no` în `/etc/ssh/sshd_config` și rulezi `systemctl restart ssh`.
+Logarea cu parolă rămâne activă, protejată de fail2ban. Dacă vrei mai târziu SSH doar cu cheie: `KEY_ONLY=1 bash deploy/secure-vps.sh`.
 
 ## 2. Configurarea
 
