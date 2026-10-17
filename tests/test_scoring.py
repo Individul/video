@@ -69,6 +69,46 @@ def test_scoring_seedi_ajuta():
     assert score_torrent(high)[0] > score_torrent(low)[0]
 
 
+# ---------- redare în browser: 1080p H.264 înaintea 4K/HEVC/HDR ----------
+
+def test_scoring_1080p_h264_bate_4k_hevc_hdr():
+    # cazul real care dădea buffering: „Animals” 4K x265 HDR-DV ales automat
+    uhd = {"name": "Animals.2026.x265.WEB-DL.2160p.HDR-DV.mkv", "size": "14.2 GB", "seeds": 400}
+    fhd = {"name": "Animals.2026.1080p.NF.WEB-DL.H.264-EniaHD.mkv", "size": "6 GB", "seeds": 25}
+    assert score_torrent(fhd, 2026)[0] > score_torrent(uhd, 2026)[0]
+
+
+def test_scoring_1080p_bate_4k_simplu():
+    uhd = {"name": "Movie 2024 2160p WEB-DL", "size": "20 GB", "seeds": 30}
+    fhd = {"name": "Movie 2024 1080p WEB-DL", "size": "8 GB", "seeds": 30}
+    assert score_torrent(fhd)[0] > score_torrent(uhd)[0]
+
+
+def test_scoring_h264_bate_hevc_la_aceeasi_rezolutie():
+    hevc = {"name": "Movie 2024 1080p WEB-DL x265", "size": "4 GB", "seeds": 30}
+    avc = {"name": "Movie 2024 1080p WEB-DL x264", "size": "8 GB", "seeds": 30}
+    assert score_torrent(avc)[0] > score_torrent(hevc)[0]
+
+
+def test_scoring_remux_penalizat():
+    remux = {"name": "Movie 2024 1080p BluRay REMUX AVC TrueHD", "size": "30 GB", "seeds": 30}
+    webdl = {"name": "Movie 2024 1080p WEB-DL H.264", "size": "8 GB", "seeds": 30}
+    assert score_torrent(webdl)[0] > score_torrent(remux)[0]
+
+
+def test_scoring_dublaj_ru_ramane_dominant_si_la_4k():
+    # 4K HEVC cu dublaj RU tot bate 1080p fără dublaj: audio rusesc > compatibilitate
+    ru_4k = {"name": "Movie 2024 2160p HEVC HDR Дубляж", "size": "20 GB", "seeds": 30}
+    en_fhd = {"name": "Movie 2024 1080p WEB-DL H.264", "size": "8 GB", "seeds": 30}
+    assert score_torrent(ru_4k)[0] > score_torrent(en_fhd)[0]
+
+
+def test_hdr_nu_confunda_dvdrip():
+    dvd = {"name": "Movie 2024 DVDRip", "size": "1.4 GB", "seeds": 5}
+    dvd_marked = {"name": "Movie 2024 DVDRip HDR", "size": "1.4 GB", "seeds": 5}
+    assert score_torrent(dvd)[0] > score_torrent(dvd_marked)[0]  # doar HDR explicit e penalizat
+
+
 def test_pick_file_index_patternuri():
     files = [
         {"name": "show/s01e01.mp4"},

@@ -53,22 +53,38 @@ def quality_label(name: str) -> str | None:
     return None
 
 
+_HEVC_RE = re.compile(r"x\.?265|h\.?265|hevc")
+_HDR_RE = re.compile(r"\bhdr|dolby.?vision|\bdv\b|\bdovi\b")
+_AVC_RE = re.compile(r"x\.?264|h\.?264|\bavc\b")
+
+
 def score_torrent(item: dict, query_year: int | None = None) -> tuple[float, str | None]:
-    """Scor pentru alegerea AUTO: preferă dublaj RU + calitate bună + seederi;
-    penalizează camera (CAM), trailere, dimensiuni aberante și titlurile greșite."""
+    """Scor pentru alegerea AUTO, gândit pentru redare în browser: preferă dublaj RU,
+    apoi 1080p H.264 (debit moderat, decodat de orice browser) + seederi.
+    4K, HEVC/x265 și HDR/Dolby Vision rămân în listă, dar nu mai pornesc singure:
+    debit de 2-3 ori mai mare și decodare nesigură în browser -> buffering.
+    Penalizează camera (CAM), trailere, dimensiuni aberante și titlurile greșite."""
     name = item.get("name") or ""
     n = name.lower()
     score = 0.0
     q = quality_label(name)
-    if q == "4K":
+    if q == "1080p":
         score += 5
-    elif q == "1080p":
-        score += 4
+    elif q == "4K":
+        score += 3
     elif q == "720p":
         score += 3
     elif q == "CAM":
         score -= 25
-    if re.search(r"web-?dl|blu-?ray|remux|bdrip|bd-?rip", n):
+    if _HEVC_RE.search(n):
+        score -= 2  # Chrome/Firefox redau HEVC doar cu suport hardware, adesea deloc
+    elif _AVC_RE.search(n):
+        score += 1
+    if _HDR_RE.search(n):
+        score -= 2  # HDR/Dolby Vision: culori spălate sau ecran negru pe multe browsere
+    if "remux" in n:
+        score -= 3  # remux: debit uriaș + audio TrueHD/DTS pe care browserul nu-l redă
+    elif re.search(r"web-?dl|blu-?ray|bdrip|bd-?rip", n):
         score += 2
     elif re.search(r"webrip|hdrip|hdtv|dvdrip", n):
         score += 1
