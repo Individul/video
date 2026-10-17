@@ -108,7 +108,26 @@ def _title_to_dict(t: Title, with_details: bool = False) -> dict[str, Any]:
         d["similar"] = extra.get("similar") or []
         d["seasons"] = extra.get("seasons") or []
         d["backdrop"] = extra.get("backdrop")
+        for key in ("tagline", "runtime", "status", "certification"):
+            d[key] = extra.get(key)
+        d["genres"] = extra.get("genres") or []
+        d["countries"] = extra.get("countries") or []
+        d["recommendations"] = extra.get("recommendations") or []
     return d
+
+
+async def _hits_with_ids(db: AsyncSession, hits: list[dict]) -> list[dict[str, Any]]:
+    """Hit-uri TMDB (similare/recomandări/filmografie) -> titluri cu id în DB, ca un clic pe
+    card să deschidă detaliile (înainte cardurile „similare” nu aveau id și dădeau eroare)."""
+    out = []
+    for h in hits:
+        try:
+            hit = SearchHit(**{k: h.get(k) for k in ("source", "name", "source_url", "poster", "year", "category", "rating")})
+        except TypeError:
+            continue
+        title = await catalog.upsert_search_hit(db, hit)
+        out.append({**_title_to_dict(title), **({"role": h["role"]} if h.get("role") else {})})
+    return out
 
 
 def _source_for(title: Title):
@@ -382,8 +401,8 @@ async def _refresh_if_stale(db: AsyncSession, title: Title) -> Title:
         # seriale vechi (înainte de încărcarea leneșă) -> o singură reîmprospătare rapidă
         if title.title_type == TitleType.SERIES and not extra.get("seasons"):
             fresh = False
-        # detalii salvate înainte să existe imaginea de fundal -> o reîmprospătare
-        if "backdrop" not in extra:
+        # detalii salvate cu o versiune mai veche (fără fundal, slogan, genuri...) -> o reîmprospătare
+        if extra.get("v", 1) < catalog.EXTRA_VERSION:
             fresh = False
     if fresh or not title.source_url:
         return title
@@ -412,7 +431,29 @@ async def title_detail(
     if title is None:
         raise HTTPException(status_code=404, detail="Titlul nu exista")
     title = await _refresh_if_stale(db, title)
-    return _title_to_dict(title, with_details=True)
+    d = _title_to_dict(title, with_details=True)
+    d["similar"] = await _hits_with_ids(db, d["similar"])
+    d["recommendations"] = await _hits_with_ids(db, d["recommendations"])
+    await db.commit()
+    return d
+
+
+@router.get("/person/{person_id}")
+async def person_detail(
+    person_id: int,
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """Pagina actorului: biografie + filmografie (titluri cu id, deschise direct din grilă)."""
+    tmdb = SOURCES.get("tmdb")
+    if tmdb is None or not hasattr(tmdb, "person"):
+        raise HTTPException(status_code=400, detail="Sursa nu suportă persoane")
+    try:
+        p = await asyncio.to_thread(tmdb.person, person_id)
+    except SourceError as e:
+        raise HTTPException(status_code=404 if "nu am gasit" in str(e) else 502, detail=str(e)) from e
+    p["works"] = await _hits_with_ids(db, p["works"])
+    await db.commit()
+    return p
 
 
 @router.get("/title/{title_id}/episodes")

@@ -181,7 +181,7 @@ function cardEl(title, opts = {}) {
       ${progress}
     </div>
     <div class="card-name">${esc(title.name)}</div>
-    ${sub ? `<div class="card-sub${opts.sub ? " accent" : ""}">${esc(sub)}</div>` : ""}
+    ${sub ? `<div class="card-sub${opts.sub && opts.accent !== false ? " accent" : ""}">${esc(sub)}</div>` : ""}
   `;
   makeActivatable(div, () => openDetail(title), title.name);
   return div;
@@ -248,7 +248,9 @@ function parseRoute() {
   const h = location.hash.replace(/^#\/?/, "");
   const seg = h.split("/").filter(Boolean);
   if (!seg.length) return { view: "home" };
-  if (seg[0] === "browse") return { view: "browse", category: seg[1] === "series" ? "series" : "films" };
+  if (seg[0] === "browse") return { view: "browse", category: CATEGORIES[seg[1]] ? seg[1] : "films" };
+  if (seg[0] === "title" && /^\d+$/.test(seg[1] || "")) return { view: "title", id: +seg[1] };
+  if (seg[0] === "person" && /^\d+$/.test(seg[1] || "")) return { view: "person", id: +seg[1] };
   if (seg[0] === "search") {
     let q = seg.slice(1).join("/");
     try {
@@ -262,9 +264,23 @@ function parseRoute() {
   return { view: "home" };
 }
 function go(hash) {
-  if (location.hash === hash) render();
+  if (location.hash === hash) {
+    forceRender = true; // clic pe pagina curentă din meniu = reîncărcare
+    render();
+  }
   else location.hash = hash;
 }
+
+/* categoriile din meniu: discover cu filtre; listele (trend etc.) nu au filtre */
+const CATEGORIES = {
+  films: { title: "Filme", filters: true },
+  series: { title: "Seriale", filters: true },
+  cartoons: { title: "Desene animate", filters: true },
+  anime: { title: "Anime", filters: true },
+  now_playing: { title: "Acum în cinematografe", filters: false },
+  trending_day: { title: "În trend azi", filters: false },
+  trending_week: { title: "În trend săptămâna aceasta", filters: false },
+};
 window.addEventListener("hashchange", render);
 
 document.querySelectorAll(".nav-item").forEach((btn) => {
@@ -274,7 +290,7 @@ document.querySelectorAll(".nav-item").forEach((btn) => {
       openSearch();
       return;
     }
-    go(v === "home" ? "#/" : `#/${v}`);
+    go(v === "home" ? "#/" : CATEGORIES[v] ? `#/browse/${v}` : `#/${v}`);
   });
 });
 
@@ -288,15 +304,70 @@ function setNavActive(view) {
    în altă pagină vede că numărul s-a schimbat și nu mai desenează nimic */
 let viewSeq = 0;
 
+/* pagina filmului are adresă proprie (#/title/123): butonul Înapoi al browserului merge,
+   iar linkul se poate trimite. Pagina de dedesubt (pageHash) rămâne încărcată, cu scroll-ul ei.
+   detailDepth = câte pagini de film am deschis noi la rând (titlu -> similar -> ...),
+   ca „Închide” să revină direct la pagina de dedesubt. */
+let pageHash = null;
+let detailDepth = 0;
+let navFromApp = false;
+let forceRender = false;
+
+function openDetail(title) {
+  const hash = `#/title/${title.id}`;
+  if (location.hash === hash) return; // deja deschis
+  navFromApp = true;
+  location.hash = hash;
+}
+/* butonul ✕ / Escape / clic în afară */
+function leaveDetail() {
+  if (detailDepth > 0) {
+    const n = detailDepth;
+    detailDepth = 0;
+    history.go(-n);
+  } else {
+    location.hash = pageHash || "#/";
+  }
+}
+
 async function render() {
-  viewSeq++;
   const r = parseRoute();
-  setNavActive(r.view === "browse" || r.view === "searchpage" ? "home" : r.view);
   closeSearch();
+
+  if (r.view === "title") {
+    // după Înapoi/Înainte din browser nu mai știm sigur câte filme sunt deasupra paginii
+    // de dedesubt (-1): „Închide” sare atunci direct la ea, în loc de history.go(-n)
+    if (navFromApp) detailDepth = detailDepth >= 0 ? detailDepth + 1 : -1;
+    else detailDepth = -1;
+    navFromApp = false;
+    forceRender = false;
+    if (pageHash === null) {
+      // link direct spre un film: încărcăm acasă dedesubt
+      pageHash = "#/";
+      viewSeq++;
+      setNavActive("home");
+      loadHome();
+    }
+    showDetail(r.id);
+    return;
+  }
+
+  navFromApp = false;
+  detailDepth = 0;
   closeDetail();
+  const hash = location.hash || "#/";
+  // înapoi din pagina filmului: pagina de dedesubt e deja încărcată — o păstrăm, cu scroll
+  if (hash === pageHash && content.childElementCount && !forceRender) return;
+  forceRender = false;
+  pageHash = hash;
+
+  viewSeq++;
+  const navView = r.view === "browse" ? r.category : r.view === "searchpage" || r.view === "person" ? null : r.view;
+  setNavActive(navView);
   window.scrollTo(0, 0);
 
   if (r.view === "home") return loadHome();
+  if (r.view === "person") return loadPerson(r.id);
   if (r.view === "browse") return loadBrowse(r.category);
   if (r.view === "searchpage") return loadSearchPage(r.q);
   if (r.view === "watchlist") return loadWatchlist();
@@ -306,14 +377,28 @@ async function render() {
 }
 
 /* ================= HOME ================= */
+/* rândurile paginii principale, în ordine (ca în Lampa); se încarcă în paralel și apar
+   fiecare când sosește, fără să aștepte după cel mai lent */
+const HOME_ROWS = [
+  { key: "now_playing", title: "Acum în cinematografe" },
+  { key: "films", title: "Filme populare" },
+  { key: "series", title: "Seriale populare" },
+  { key: "trending_week", title: "În trend săptămâna aceasta" },
+  { key: "cartoons", title: "Desene animate" },
+  { key: "anime", title: "Anime" },
+];
+
 async function loadHome() {
   const seq = viewSeq;
   content.innerHTML = `<div class="hero-skel skel"></div><div class="rows">${skelRows(2)}</div>`;
-  let films, series;
+  const fetchList = (key) => api(`/api/browse?category=${key}`).then((d) => d.results || []);
+  // pornim toate cererile deodată; hero-ul așteaptă doar „În trend azi”
+  const pending = Object.fromEntries(HOME_ROWS.map((r) => [r.key, fetchList(r.key)]));
+  Object.values(pending).forEach((p) => p.catch(() => {})); // erorile se tratează pe rând
+  let trending;
   try {
-    [films, series, state.history] = await Promise.all([
-      api("/api/browse?category=films").then((d) => d.results || []),
-      api("/api/browse?category=series").then((d) => d.results || []),
+    [trending, state.history] = await Promise.all([
+      fetchList("trending_day"),
       api("/api/history").catch(() => state.history),
     ]);
   } catch (err) {
@@ -325,8 +410,9 @@ async function loadHome() {
 
   content.innerHTML = "";
 
-  const heroTitle = films[0];
+  const heroTitle = trending.find((t) => t.poster) || trending[0];
   if (heroTitle) {
+    const kind = heroTitle.type === "series" ? "serial" : "film";
     const hero = document.createElement("section");
     hero.className = "hero";
     hero.innerHTML = `
@@ -334,11 +420,12 @@ async function loadHome() {
       <div class="hero-inner">
         <div class="hero-poster">${heroTitle.poster ? `<img alt="" fetchpriority="high" src="${escUrl(heroTitle.poster)}">` : ""}</div>
         <div class="hero-info">
+          <div class="hero-kicker">În trend azi</div>
           <div class="hero-title">${esc(heroTitle.name)}</div>
           <div class="hero-meta">
             ${heroTitle.rating ? `<span class="stars">★ ${Number(heroTitle.rating).toFixed(1)}</span>` : ""}
             ${heroTitle.year ? `<span>${esc(heroTitle.year)}</span>` : ""}
-            <span>film</span>
+            <span>${kind}</span>
           </div>
           <div class="hero-desc" id="hero-desc"></div>
           <div class="hero-actions">
@@ -372,8 +459,23 @@ async function loadHome() {
       rowEl("Continuă vizionarea", continuable.map((h) => h.title), { histories: continuable })
     );
   }
-  rows.appendChild(rowEl("Filme populare", films.slice(1), { onMore: () => go("#/browse/films") }));
-  rows.appendChild(rowEl("Seriale populare", series, { onMore: () => go("#/browse/series") }));
+  rows.appendChild(
+    rowEl("În trend azi", trending.filter((t) => t !== heroTitle), { onMore: () => go("#/browse/trending_day") })
+  );
+
+  // un loc rezervat (schelet) pentru fiecare rând, înlocuit când îi sosesc datele
+  for (const r of HOME_ROWS) {
+    const slot = document.createElement("div");
+    slot.innerHTML = skelRows(1);
+    rows.appendChild(slot);
+    pending[r.key]
+      .then((items) => {
+        if (seq !== viewSeq || !slot.isConnected) return;
+        if (!items.length) return slot.remove();
+        slot.replaceWith(rowEl(r.title, items, { onMore: () => go(`#/browse/${r.key}`) }));
+      })
+      .catch(() => slot.isConnected && slot.remove()); // un rând căzut nu strică pagina
+  }
 }
 
 /* hero: după prima afișare (instant, cu posterul estompat) aducem detaliile titlului
@@ -408,10 +510,11 @@ async function loadBrowse(category) {
   const seq = viewSeq;
   Object.assign(browseState, { category, page: 1, genre: "", year: "", sort: "popularity", items: [], done: false, loading: false });
   browseState.seq++;
+  const cat = CATEGORIES[category] || CATEGORIES.films;
   content.innerHTML = `
     <div class="grid-wrap">
-      <div class="view-title">${category === "series" ? "Seriale" : "Filme"}</div>
-      <div class="filter-bar" id="filter-bar">
+      <div class="view-title">${esc(cat.title)}</div>
+      <div class="filter-bar${cat.filters ? "" : " hidden"}" id="filter-bar">
         <select id="f-genre"><option value="">Gen: toate</option></select>
         <select id="f-year"><option value="">An: toți</option></select>
         <select id="f-sort">
@@ -450,7 +553,7 @@ async function loadBrowse(category) {
   $("#load-more").addEventListener("click", fetchBrowsePage);
   fetchBrowsePage();
 
-  try {
+  if (cat.filters) try {
     const genres = await api(`/api/genres?category=${category}`);
     if (seq !== viewSeq) return;
     const gSel = $("#f-genre");
@@ -761,9 +864,9 @@ async function toggleWatchlist(title) {
 const modal = $("#modal");
 const modalBody = $("#modal-body");
 
-$("#modal-close").addEventListener("click", closeDetail);
+$("#modal-close").addEventListener("click", leaveDetail);
 modal.addEventListener("click", (e) => {
-  if (e.target === modal) closeDetail();
+  if (e.target === modal) leaveDetail();
 });
 
 /* gradient jos cât timp mai există conținut sub marginea vizibilă */
@@ -832,12 +935,13 @@ function closeDetail() {
   document.removeEventListener("keydown", playerKeysHandler);
   if (wasOpen && lastFocus && document.contains(lastFocus)) lastFocus.focus();
   lastFocus = null;
+  document.title = "Cinema";
 }
 window.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     if (document.fullscreenElement) return; // Escape iese întâi din fullscreen
-    closeDetail();
-    closeSearch();
+    if (!searchOverlay.classList.contains("hidden")) return closeSearch();
+    if (!modal.classList.contains("hidden")) leaveDetail();
   }
 });
 // telefon: aplicația trimisă în fundal / tab închis -> salvăm poziția
@@ -855,9 +959,10 @@ window.addEventListener("pagehide", () => {
   }
 });
 
-async function openDetail(title, opts = {}) {
+/* afișează pagina filmului (apelată din router pentru #/title/<id>) */
+async function showDetail(id, opts = {}) {
   if (modal.classList.contains("hidden")) lastFocus = document.activeElement;
-  else stopPlayer(); // titlu similar deschis din modal: oprim player-ul curent
+  else stopPlayer(); // titlu similar deschis din pagina filmului: oprim player-ul curent
   const ds = ++detailSeq;
   modal.classList.remove("hidden");
   modal.scrollTop = 0;
@@ -865,21 +970,53 @@ async function openDetail(title, opts = {}) {
   $("#modal-close").focus({ preventScroll: true });
   let detail;
   try {
-    detail = await api(`/api/title/${title.id}?_=${Date.now()}`);
+    detail = await api(`/api/title/${id}?_=${Date.now()}`);
   } catch (err) {
     if (ds === detailSeq) modalBody.innerHTML = `<div class="status error">Eroare: ${esc(err.message)}</div>`;
     return;
   }
   if (ds !== detailSeq) return; // închis sau înlocuit între timp
+  document.title = `${detail.name} — Cinema`;
   renderModal(detail, opts);
 }
 
-function chipsHtml(t) {
+/* țări: cod ISO -> nume în rusă (ca restul catalogului), cu prescurtările uzuale */
+const COUNTRY_SHORT = { US: "США", GB: "Великобритания", RU: "Россия", KR: "Южная Корея" };
+let regionNames = null;
+function countryName(code) {
+  if (COUNTRY_SHORT[code]) return COUNTRY_SHORT[code];
+  try {
+    regionNames = regionNames || new Intl.DisplayNames(["ru"], { type: "region" });
+    return regionNames.of(code) || code;
+  } catch (_) {
+    return code;
+  }
+}
+function fmtRuntime(min, isSeries) {
+  if (!min) return "";
+  const h = Math.floor(min / 60), m = min % 60;
+  const s = h ? `${h} h ${String(m).padStart(2, "0")} min` : `${m} min`;
+  return isSeries ? `~${s} / episod` : s;
+}
+
+/* antetul paginii de film, ca în Lampa: an + țară, titlu mare, slogan, etichete, durată + genuri */
+function detailHeadHtml(t, isSeries) {
+  const pre = [t.year, ...(t.countries || []).map(countryName)].filter(Boolean).join(", ");
+  const badges = [
+    t.rating ? `<span class="d-rate">${Number(t.rating).toFixed(1)} <small>TMDB</small></span>` : "",
+    t.certification ? `<span class="d-box">${esc(t.certification)}</span>` : "",
+    t.status ? `<span class="d-box">${esc(t.status)}</span>` : "",
+    `<span class="d-box soft">${isSeries ? "serial" : "film"}</span>`,
+  ].join("");
+  const meta = [fmtRuntime(t.runtime, isSeries), (t.genres || []).join(" | ")].filter(Boolean);
+  const showOriginal = t.name_original && t.name_original !== t.name;
   return `
-    ${t.year ? `<span>${esc(t.year)}</span>` : ""}
-    ${t.type === "series" ? "<span>serial</span>" : t.type === "movie" ? "<span>film</span>" : ""}
-    ${t.rating ? `<span>★ ${Number(t.rating).toFixed(1)}</span>` : ""}
-  `;
+    ${pre ? `<div class="d-pre">${esc(pre)}</div>` : ""}
+    <h2>${esc(t.name)}</h2>
+    ${showOriginal ? `<div class="modal-original">${esc(t.name_original)}</div>` : ""}
+    ${t.tagline ? `<div class="d-tagline">${esc(t.tagline)}</div>` : ""}
+    <div class="d-badges">${badges}</div>
+    ${meta.length ? `<div class="d-meta">${meta.map(esc).join(' <span class="dot">•</span> ')}</div>` : ""}`;
 }
 
 function renderModal(t, opts = {}) {
@@ -895,20 +1032,17 @@ function renderModal(t, opts = {}) {
       <div class="modal-head-inner">
         <div class="modal-poster">${t.poster ? `<img alt="" src="${escUrl(t.poster)}">` : ""}</div>
         <div class="modal-info">
-          <h2>${esc(t.name)}</h2>
-          ${t.name_original ? `<div class="modal-original">${esc(t.name_original)}</div>` : ""}
-          <div class="modal-chips">${chipsHtml(t)}</div>
+          ${detailHeadHtml(t, isSeries)}
           ${t.description ? `<div class="modal-desc" id="desc">${esc(t.description)}</div>` : ""}
+          <div class="modal-actions">
+            ${isSeries ? "" : `<button class="btn big" id="m-play">${svg(I.play)} Vizionează</button>`}
+            ${isSeries ? `<button class="btn big" id="m-eps">${svg(I.play)} Episoade</button>` : ""}
+            <button class="btn ghost" id="m-wl">${svg(I.star, 16)} ${inWl ? "În watchlist" : "Watchlist"}</button>
+            ${t.trailer ? `<button class="btn ghost" id="m-trailer">${svg(I.yt, 16)} Trailer</button>` : ""}
+            <span id="m-seg-wrap"></span>
+          </div>
         </div>
       </div>
-    </div>
-
-    <div class="modal-actions">
-      ${isSeries ? "" : `<button class="btn" id="m-play">${svg(I.play)} Redă</button>`}
-      ${isSeries ? `<button class="btn" id="m-eps">${svg(I.play)} Episoade</button>` : ""}
-      <button class="btn ghost" id="m-wl">${svg(I.star, 16)} ${inWl ? "În watchlist" : "Watchlist"}</button>
-      ${t.trailer ? `<button class="btn ghost" id="m-trailer">${svg(I.yt, 16)} Trailer</button>` : ""}
-      <span id="m-seg-wrap"></span>
     </div>
 
     <div class="tabs" id="m-tabs">
@@ -925,6 +1059,7 @@ function renderModal(t, opts = {}) {
     </div>
     ${isSeries ? `<div id="tab-eps" class="tab-panel hidden"></div>` : ""}
     <div id="tab-info" class="tab-panel hidden"></div>
+    <div class="rows d-rows" id="d-rows"></div>
   `;
 
   const descEl = modalBody.querySelector("#desc");
@@ -1001,6 +1136,7 @@ function renderModal(t, opts = {}) {
     modalBody.querySelector("#m-play").addEventListener("click", () => autoPlayBest(t));
   }
   renderInfoTab(t);
+  renderRelatedRows(t);
 
   // resume
   (async () => {
@@ -1078,26 +1214,101 @@ function playTrailer(t) {
   setTimeout(updateModalFade, 250);
 }
 
-/* ---------- tab Detalii: cast + similar ---------- */
+/* ---------- tab Detalii: descriere completă + fișa titlului ---------- */
 function renderInfoTab(t) {
   const panel = modalBody.querySelector("#tab-info");
   if (!panel) return;
-  const castHtml = (t.cast || [])
-    .map(
-      (c) => `<div class="cast-chip">
-        ${c.profile ? `<img src="${escUrl(c.profile)}" loading="lazy">` : `<div class="cast-noimg">${svg(I.info, 20)}</div>`}
-        <div><div class="cast-name">${esc(c.name)}</div><div class="cast-char">${esc(c.character || "")}</div></div>
-      </div>`
-    )
-    .join("");
-  const similar = t.similar || [];
+  const isSeries = t.type === "series";
+  const facts = [
+    ["Titlu original", t.name_original && t.name_original !== t.name ? t.name_original : ""],
+    ["An", t.year],
+    ["Țări", (t.countries || []).map(countryName).join(", ")],
+    ["Genuri", (t.genres || []).join(", ")],
+    [isSeries ? "Durata episodului" : "Durată", fmtRuntime(t.runtime, false)],
+    ["Status", t.status],
+    ["Limită de vârstă", t.certification],
+    ["Sezoane", isSeries && t.seasons && t.seasons.length ? t.seasons.filter((s) => s.season > 0).length : ""],
+  ].filter(([, v]) => v);
   panel.innerHTML = `
     ${t.description ? `<div class="info-desc">${esc(t.description)}</div>` : ""}
-    ${castHtml ? `<div class="sub-title">Distribuție</div><div class="cast-row">${castHtml}</div>` : ""}
-    ${similar.length ? `<div class="sub-title">Titluri similare</div><div class="similar-row" id="similar-row"></div>` : ""}
+    ${facts.length ? `<dl class="facts">${facts.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>` : ""}
   `;
-  const row = panel.querySelector("#similar-row");
-  if (row) similar.forEach((h) => row.appendChild(cardEl(h)));
+}
+
+/* ---------- sub pagina filmului: Actori, Recomandări, Similare (rânduri ca pe Acasă) ---------- */
+function renderRelatedRows(t) {
+  const box = modalBody.querySelector("#d-rows");
+  if (!box) return;
+  const cast = (t.cast || []).filter((c) => c.name);
+  if (cast.length) {
+    const row = document.createElement("div");
+    row.className = "row";
+    row.innerHTML = `<div class="row-title"><div>Actori</div></div><div class="cast-scroll"></div>`;
+    const scroll = row.querySelector(".cast-scroll");
+    cast.forEach((c) => {
+      const chip = document.createElement("div");
+      chip.className = "cast-chip" + (c.id ? " link" : "");
+      chip.innerHTML = `
+        ${c.profile ? `<img src="${escUrl(c.profile)}" loading="lazy" alt="">` : `<div class="cast-noimg">${svg(I.info, 20)}</div>`}
+        <div class="cast-name">${esc(c.name)}</div><div class="cast-char">${esc(c.character || "")}</div>`;
+      if (c.id) makeActivatable(chip, () => go(`#/person/${c.id}`), c.name);
+      scroll.appendChild(chip);
+    });
+    box.appendChild(row);
+  }
+  if ((t.recommendations || []).length) box.appendChild(rowEl("Recomandări", t.recommendations));
+  if ((t.similar || []).length) box.appendChild(rowEl("Similare", t.similar));
+}
+
+/* ================= PAGINA ACTORULUI ================= */
+async function loadPerson(id) {
+  const seq = viewSeq;
+  content.innerHTML = `<div class="grid-wrap"><div class="status">Se încarcă...</div></div>`;
+  let p;
+  try {
+    p = await api(`/api/person/${id}`);
+  } catch (err) {
+    if (seq === viewSeq) content.innerHTML = `<div class="status error">Eroare: ${esc(err.message)}</div>`;
+    return;
+  }
+  if (seq !== viewSeq) return;
+  document.title = `${p.name} — Cinema`;
+  const fmtDate = (d) => {
+    try {
+      return new Date(d).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
+    } catch (_) {
+      return d;
+    }
+  };
+  const age = p.birthday && !p.deathday
+    ? Math.floor((Date.now() - new Date(p.birthday)) / (365.25 * 24 * 3600 * 1000))
+    : null;
+  const facts = [
+    p.birthday ? `Născut: ${fmtDate(p.birthday)}${age ? ` (${age} ani)` : ""}` : "",
+    p.deathday ? `Decedat: ${fmtDate(p.deathday)}` : "",
+    p.place_of_birth || "",
+  ].filter(Boolean);
+  const wrap = document.createElement("div");
+  wrap.className = "grid-wrap person-page";
+  wrap.innerHTML = `
+    <div class="person-head">
+      <div class="person-photo">${p.photo ? `<img src="${escUrl(p.photo)}" alt="">` : svg(I.info, 48)}</div>
+      <div class="person-info">
+        <div class="d-pre">${esc(p.department === "Directing" ? "Regizor" : "Actor")}</div>
+        <h1>${esc(p.name)}</h1>
+        ${facts.length ? `<div class="d-meta">${facts.map(esc).join(' <span class="dot">•</span> ')}</div>` : ""}
+        ${p.biography ? `<div class="person-bio" id="person-bio">${esc(p.biography)}</div>` : ""}
+      </div>
+    </div>
+    <div class="view-title">Filmografie (${p.works.length})</div>`;
+  const grid = document.createElement("div");
+  grid.className = "grid";
+  p.works.forEach((w) => grid.appendChild(cardEl(w, w.role ? { sub: `${w.year || ""}${w.year ? " · " : ""}${w.role}`, accent: false } : {})));
+  wrap.appendChild(grid);
+  content.innerHTML = "";
+  content.appendChild(wrap);
+  const bio = wrap.querySelector("#person-bio");
+  if (bio) bio.addEventListener("click", () => bio.classList.toggle("expanded"));
 }
 
 /* ---------- tab Episoade: sezoane din TMDB, episoade încărcate leneș per sezon ---------- */

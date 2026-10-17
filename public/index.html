@@ -6,7 +6,7 @@
 <title>Cinema</title>
 <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 <link rel="apple-touch-icon" href="/static/favicon.svg">
-<link rel="stylesheet" href="/static/style.css?v=31">
+<link rel="stylesheet" href="/static/style.css?v=32">
 </head>
 <body>
 
@@ -22,6 +22,24 @@
       <svg viewBox="0 0 24 24"><path d="M15.5 14h-.8l-.3-.3a6.5 6.5 0 1 0-.7.7l.3.3v.8l5 5 1.5-1.5-5-5zm-6 0a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>
       <span class="nav-tip">Căutare</span>
     </button>
+    <div class="nav-sep"></div>
+    <button class="nav-item nav-cat" data-view="films" aria-label="Filme">
+      <svg viewBox="0 0 24 24"><path d="M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V4z"/></svg>
+      <span class="nav-tip">Filme</span>
+    </button>
+    <button class="nav-item nav-cat" data-view="series" aria-label="Seriale">
+      <svg viewBox="0 0 24 24"><path fill-rule="evenodd" d="M21 3H3a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h5v2h8v-2h5a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm0 14H3V5h18z"/></svg>
+      <span class="nav-tip">Seriale</span>
+    </button>
+    <button class="nav-item nav-cat" data-view="cartoons" aria-label="Desene animate">
+      <svg viewBox="0 0 24 24"><path fill-rule="evenodd" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM8.5 7.5a1.6 1.6 0 1 1 0 3.2 1.6 1.6 0 0 1 0-3.2zm7 0a1.6 1.6 0 1 1 0 3.2 1.6 1.6 0 0 1 0-3.2zM6.8 13.5h10.4a5.4 5.4 0 0 1-10.4 0z"/></svg>
+      <span class="nav-tip">Desene</span>
+    </button>
+    <button class="nav-item nav-cat" data-view="anime" aria-label="Anime">
+      <svg viewBox="0 0 24 24"><path d="M12 2l1.9 5.6L19.8 6l-3.6 4.6L21 14l-6 .4-1.4 5.8L12 15l-1.6 5.2L9 14.4 3 14l4.8-3.4L4.2 6l5.9 1.6z"/></svg>
+      <span class="nav-tip">Anime</span>
+    </button>
+    <div class="nav-sep"></div>
     <button class="nav-item" data-view="watchlist" aria-label="Watchlist">
       <svg viewBox="0 0 24 24"><path d="M12 17.3l-6.2 3.7 1.6-7L2 9.2l7.1-.6L12 2l2.9 6.6 7.1.6-5.4 4.8 1.6 7z"/></svg>
       <span class="nav-tip">Watchlist</span>
@@ -69,6 +87,6 @@
   </div>
 </div>
 
-<script src="/static/app.js?v=26"></script>
+<script src="/static/app.js?v=28"></script>
 </body>
 </html>
