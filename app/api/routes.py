@@ -317,7 +317,10 @@ async def genres(category: str = Query("films")) -> list[dict[str, Any]]:
     tmdb = SOURCES.get("tmdb")
     if tmdb is None or not hasattr(tmdb, "genres"):
         return []
-    return await tmdb.genres(category)
+    try:
+        return await tmdb.genres(category)
+    except SourceError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
 
 
 @router.post("/titles")
