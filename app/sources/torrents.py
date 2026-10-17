@@ -709,6 +709,7 @@ async def torrserver_play(
         ) from e
     if not files:
         raise SourceError("TorrServer nu a returnat fluxuri — torrentul nu e găsit / seed zero")
+    await asyncio.to_thread(_attach_file_sizes, h, files)
     index = max(0, min(index, max(0, len(files) - 1)))
     matched = False
     if season is not None and episode is not None:
@@ -725,6 +726,8 @@ async def torrserver_play(
         "files": [{**f, "url": ts_stream_url(f["url"])} for f in files],
         "stream_url": ts_stream_url(file["url"]),
         "index": file["index"],
+        "size": file.get("size"),  # bytes; None dacă TorrServer nu a raportat
+        "hash": h,
         "matched": matched,
     }
 
@@ -775,6 +778,33 @@ async def list_downloads() -> list[dict]:
             f"TorrServer nu raspunde la {Config.TORRSERVER_URL} ({e}). "
             "Porneste TorrServer sau ajusteaza TORRSERVER_URL in .env."
         ) from e
+
+
+def _attach_file_sizes(h: str, files: list[dict]) -> None:
+    """Adaugă `size` (bytes) fiecărui fișier, din file_stats-ul TorrServer (best-effort).
+    Frontendul decide după mărime dacă extrage automat subtitrările din MKV."""
+    try:
+        info = _ts_request("get", h) or {}
+        sizes = {fs.get("id"): fs.get("length") for fs in info.get("file_stats") or []}
+    except Exception:  # noqa: BLE001 — fără mărimi, frontendul tratează fișierul ca mare
+        return
+    for f in files:
+        if sizes.get(f["index"]):
+            f["size"] = sizes[f["index"]]
+
+
+_HASH_RE = re.compile(r"^[a-fA-F0-9]{40}$|^[a-fA-F0-9]{64}$")
+
+
+async def drop_torrent(torrent_hash: str) -> None:
+    """Deconectează torrentul (nu mai descarcă/urcă), dar îl păstrează în listă și în cache.
+    Folosit când închizi player-ul sau treci la altă versiune."""
+    if not _HASH_RE.match(torrent_hash or ""):
+        raise SourceError("Hash de torrent invalid")
+    try:
+        await asyncio.to_thread(_ts_request, "drop", torrent_hash.lower())
+    except Exception as e:  # noqa: BLE001
+        raise SourceError(f"TorrServer nu a putut opri torrentul ({e}).") from e
 
 
 async def remove_download(torrent_hash: str) -> None:

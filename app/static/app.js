@@ -787,6 +787,28 @@ let playSeq = 0;
 let playerCleanup = null;
 let lastFocus = null;
 
+/* torrentele care nu se mai redau sunt deconectate în TorrServer după câteva secunde
+   (altfel continuă să descarce și iau banda filmului curent). Întârzierea evită
+   deconectarea când doar schimbi fișierul în același torrent. */
+const pendingDrops = new Map(); // hash -> timeout
+function scheduleDrop(hash, delay = 5000) {
+  if (!hash) return;
+  clearTimeout(pendingDrops.get(hash));
+  pendingDrops.set(
+    hash,
+    setTimeout(() => {
+      pendingDrops.delete(hash);
+      api("/api/torrents/drop", { method: "POST", keepalive: true, body: JSON.stringify({ hash }) }).catch(() => {});
+    }, delay)
+  );
+}
+function keepTorrent(hash) {
+  if (pendingDrops.has(hash)) {
+    clearTimeout(pendingDrops.get(hash));
+    pendingDrops.delete(hash);
+  }
+}
+
 function stopPlayer() {
   playSeq++;
   if (playerCleanup) {
@@ -822,7 +844,16 @@ window.addEventListener("keydown", (e) => {
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden" && currentProgressSave) currentProgressSave();
 });
-window.addEventListener("pagehide", () => currentProgressSave && currentProgressSave());
+window.addEventListener("pagehide", () => {
+  if (currentProgressSave) currentProgressSave();
+  stopPlayer(); // anulează extragerea subtitrărilor
+  // tab închis/reîncărcat: torrentul se deconectează imediat, nu peste 5s (pagina nu mai există)
+  for (const [hash, timer] of pendingDrops) {
+    clearTimeout(timer);
+    pendingDrops.delete(hash);
+    api("/api/torrents/drop", { method: "POST", keepalive: true, body: JSON.stringify({ hash }) }).catch(() => {});
+  }
+});
 
 async function openDetail(title, opts = {}) {
   if (modal.classList.contains("hidden")) lastFocus = document.activeElement;
@@ -1353,12 +1384,29 @@ async function playEpisode(t, season, episode, seekTo = null) {
   for (const c of candidates) {
     try {
       const d = await startStream(c, { season, episode });
-      if (ps !== playSeq) return;
+      if (ps !== playSeq) {
+        scheduleDrop(d.hash); // pornit degeaba — ai ales altceva între timp
+        if (data) scheduleDrop(data.hash);
+        return;
+      }
+      if (d.matched !== false) {
+        // episodul găsit exact: câștigă; fallback-ul ținut până acum se deconectează
+        if (data && data.hash !== d.hash) scheduleDrop(data.hash);
+        data = d; chosen = c;
+        break;
+      }
       // fallback = pachetul cu cele mai multe fișiere (probabil conține episodul)
-      if (!data || d.files.length > data.files.length) { data = d; chosen = c; }
-      if (d.matched !== false) { data = d; chosen = c; break; }
+      if (!data || d.files.length > data.files.length) {
+        if (data && data.hash !== d.hash) scheduleDrop(data.hash);
+        data = d; chosen = c;
+      } else if (d.hash !== data.hash) {
+        scheduleDrop(d.hash); // candidat încercat și respins
+      }
     } catch (_) {
-      if (ps !== playSeq) return;
+      if (ps !== playSeq) {
+        if (data) scheduleDrop(data.hash);
+        return;
+      }
     }
   }
   if (!data) {
@@ -1387,7 +1435,10 @@ async function playTorrent(t, source, { season = null, episode = null, seekTo = 
       playerBox.innerHTML = `<div class="status error">${esc(err.message)}<br><small>Alege altă versiune din lista de mai jos.</small></div>`;
     return;
   }
-  if (ps !== playSeq) return; // între timp ai ales altă versiune sau ai închis
+  if (ps !== playSeq) {
+    scheduleDrop(data.hash); // între timp ai ales altă versiune sau ai închis
+    return;
+  }
 
   renderPlayer(t, source, data, { season, episode, seekTo, fileIndex });
 }
@@ -1395,7 +1446,9 @@ async function playTorrent(t, source, { season = null, episode = null, seekTo = 
 function renderPlayer(t, source, data, { season = null, episode = null, seekTo = null, fileIndex = null } = {}) {
   const playerBox = modalBody.querySelector("#player");
   if (!playerBox) return;
-  const ctx = { alive: true }; // devine false la cleanup: opresc cronometre/poll-uri ale acestui player
+  // alive devine false la cleanup (opresc cronometre/poll-uri); onStop: acțiuni de oprire pe server
+  const ctx = { alive: true, onStop: [] };
+  keepTorrent(data.hash); // același torrent ca înainte (alt fișier din pachet): nu-l deconecta
   playerBox.innerHTML = `
     <div class="video-wrap">
       <video id="video" controls autoplay playsinline></video>
@@ -1542,6 +1595,8 @@ function renderPlayer(t, source, data, { season = null, episode = null, seekTo =
     progress.save(); // ultima poziție, înainte să dispară player-ul
     ctx.alive = false;
     stopNext();
+    ctx.onStop.forEach((fn) => fn()); // ex.: anulează extragerea subtitrărilor pe server
+    scheduleDrop(data.hash); // torrentul nu mai descarcă degeaba după ce ai plecat
     try {
       video.pause();
       video.removeAttribute("src"); // închide conexiunea /ts/stream spre TorrServer
@@ -1563,7 +1618,12 @@ function addRuTrack(video, src, label) {
   return track;
 }
 
-function attachSubtitles(video, t, data, season, episode, source = {}, ctx = { alive: true }) {
+/* peste această mărime nu extragem automat subtitrările din MKV: ffmpeg ar descărca tot
+   fișierul (zeci de GB) în paralel cu redarea și ar provoca buffering */
+const MUX_AUTO_MAX_BYTES = 4e9;
+const fmtGB = (b) => (b / 1e9).toFixed(b >= 1e10 ? 0 : 1) + " GB";
+
+function attachSubtitles(video, t, data, season, episode, source = {}, ctx = { alive: true, onStop: [] }) {
   const ccEl = modalBody.querySelector("#cc-state");
   const setState = (text, ok) => {
     if (!ccEl) return;
@@ -1578,7 +1638,8 @@ function attachSubtitles(video, t, data, season, episode, source = {}, ctx = { a
   }
 
   // externă (OpenSubtitles, cu OS_API_KEY) — ultimul fallback
-  const tryExternal = () => {
+  // onNone: ce facem dacă nici OpenSubtitles nu are (ex. oferim extragerea manuală)
+  const tryExternal = (onNone = () => setState("CC: niciuna", false)) => {
     const q = [t.name, season ? `S${String(season).padStart(2, "0")}E${String(episode).padStart(2, "0")}` : "", t.year || ""]
       .filter(Boolean)
       .join(" ");
@@ -1591,10 +1652,10 @@ function attachSubtitles(video, t, data, season, episode, source = {}, ctx = { a
           addRuTrack(video, `/api/subtitles/file?q=${encodeURIComponent(q)}`, "RU");
           setState("CC RU ✓", true);
         } else {
-          setState("CC: niciuna", false);
+          onNone();
         }
       })
-      .catch(() => setState("CC: niciuna", false));
+      .catch(() => ctx.alive && onNone());
   };
 
   // 1) fișier .srt/.ass separat în arhiva torrentului
@@ -1609,19 +1670,29 @@ function attachSubtitles(video, t, data, season, episode, source = {}, ctx = { a
 
   // 2) subtitrări muxate în container — ffmpeg le extrage în fundal, cu progres
   if (/\.mkv$/i.test(data.name || "") && data.stream_url) {
-    const statusUrl = `/api/subtitles/mux?url=${encodeURIComponent(data.stream_url)}`;
-    const dataUrl = `/api/subtitles/mux/data?url=${encodeURIComponent(data.stream_url)}`;
-    const poll = async () => {
+    const enc = encodeURIComponent(data.stream_url);
+    const statusUrl = `/api/subtitles/mux?url=${enc}`;
+    const dataUrl = `/api/subtitles/mux/data?url=${enc}`;
+    let started = false;
+    // la închidere/altă versiune: oprim ffmpeg pe server (altfel citește tot fișierul degeaba)
+    ctx.onStop.push(() => {
+      if (started) fetch(statusUrl, { method: "DELETE", keepalive: true }).catch(() => {});
+    });
+    const poll = async (start = true) => {
       if (!ctx.alive) return; // player închis sau alt fișier ales — oprim verificarea
       try {
-        const st = await fetch(statusUrl).then((r) => r.json());
+        const st = await fetch(start ? statusUrl : `${statusUrl}&start=0`).then((r) => r.json());
         if (!ctx.alive) return;
+        if (st.status === "running") started = true;
         if (st.status === "done") {
           addRuTrack(video, dataUrl, "RU");
           setState("CC RU ✓", true);
         } else if (st.status === "running") {
           setState(st.pct > 0 ? `CC… se extrag ${st.pct}%` : "CC… se extrag", false);
           setTimeout(poll, 3000);
+        } else if (st.status === "idle") {
+          // fișier mare, nimic în cache: încercăm OpenSubtitles, apoi oferim extragerea manuală
+          tryExternal(offerManual);
         } else {
           tryExternal();
         }
@@ -1629,8 +1700,29 @@ function attachSubtitles(video, t, data, season, episode, source = {}, ctx = { a
         if (ctx.alive) tryExternal();
       }
     };
-    setState("CC… se extrag", false);
-    poll();
+    const offerManual = () => {
+      if (!ctx.alive || !ccEl) return;
+      setState("CC: niciuna", false);
+      const b = document.createElement("button");
+      b.className = "btn small ghost";
+      b.id = "cc-extract";
+      b.title = "ffmpeg descarcă tot fișierul ca să scoată subtitrările — poate încetini redarea";
+      b.textContent = `Extrage CC din MKV (${data.size ? fmtGB(data.size) : "fișier mare"})`;
+      b.addEventListener("click", () => {
+        b.remove();
+        setState("CC… se extrag", false);
+        poll(true);
+      });
+      ccEl.after(b);
+    };
+
+    if (data.size && data.size <= MUX_AUTO_MAX_BYTES) {
+      setState("CC… se extrag", false);
+      poll(true); // fișier mic: extragere automată, ca până acum
+    } else {
+      setState("CC…", false);
+      poll(false); // doar verificăm cache-ul / un job deja pornit — fără să pornim ffmpeg
+    }
     return;
   }
 

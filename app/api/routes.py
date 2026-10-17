@@ -195,6 +195,20 @@ async def torrents_play(body: PlayBody) -> dict[str, Any]:
         raise HTTPException(status_code=502, detail=str(e)) from e
 
 
+class DropBody(BaseModel):
+    hash: str = Field(min_length=40, max_length=64)
+
+
+@router.post("/torrents/drop")
+async def torrents_drop(body: DropBody) -> dict[str, str]:
+    """Deconectează un torrent care nu se mai redă (rămâne în cache, nu mai descarcă)."""
+    try:
+        await torrent_service.drop_torrent(body.hash)
+    except SourceError as e:
+        raise HTTPException(status_code=400 if "invalid" in str(e) else 502, detail=str(e)) from e
+    return {"ok": "true"}
+
+
 # ----------------- TorrServer: cache-ul de descărcări -----------------
 
 @router.get("/downloads")
@@ -240,13 +254,24 @@ async def subtitles_file(
 
 
 @router.get("/subtitles/mux")
-async def subtitles_mux(url: str = Query(min_length=10)) -> dict[str, Any]:
-    """Starea extragerii subtitrărilor din MKV (pornește jobul în fundal la prima cerere):
-    {status: running|done|error, pct: 0-100}."""
+async def subtitles_mux(url: str = Query(min_length=10), start: bool = True) -> dict[str, Any]:
+    """Starea extragerii subtitrărilor din MKV (pornește jobul în fundal la prima cerere,
+    dacă start=1): {status: running|done|error|idle, pct: 0-100}."""
     try:
-        return await asyncio.to_thread(subtitles.mux_job_state, url)
+        return await asyncio.to_thread(subtitles.mux_job_state, url, start)
     except SourceError as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
+
+
+@router.delete("/subtitles/mux")
+async def subtitles_mux_cancel(url: str = Query(min_length=10)) -> dict[str, Any]:
+    """Oprește extragerea (player închis / altă versiune aleasă) — ffmpeg nu mai trage
+    tot fișierul prin TorrServer degeaba."""
+    try:
+        cancelled = await asyncio.to_thread(subtitles.cancel_mux_job, url)
+    except SourceError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return {"ok": True, "cancelled": cancelled}
 
 
 @router.get("/subtitles/mux/data")
