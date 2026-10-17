@@ -982,7 +982,9 @@ main#content {
   .tabs { background: var(--bg-content); padding: 0 3rem; }
   .player-box, .torrent-list, .q-filter, .resume-chip, .auto-pill, .sub-title,
   .season-chips, .eps-grid, .info-desc, .similar-row, .eps-more-wrap, .facts { margin-left: 3rem; margin-right: 3rem; }
-  .player-box { max-width: 1500px; }
+  /* conținutul taburilor (player + versiuni, episoade, detalii) centrat ca un bloc:
+     pe ecranele late nu mai rămâne un gol doar în dreapta */
+  #tab-play, #tab-eps, #tab-info { max-width: calc(1500px + 6rem); margin-left: auto; margin-right: auto; }
   .d-rows { padding: 1.6rem 3rem 0; }
   .d-rows .row-arrow.left { left: -3rem; }
   .d-rows .row-arrow.right { right: -3rem; }
