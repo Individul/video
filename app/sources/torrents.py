@@ -133,6 +133,22 @@ def find_episode_file(files: list[dict], season: int, episode: int) -> int | Non
         nm = f.get("name") or ""
         if any(p.search(nm) for p in pats):
             return i
+    # nivelul 1.5: episod fără sezon în numele fișierului („Zhuki.e08.2019.mkv",
+    # „серия 8") — sezonul e dat de pachet; ignorăm fișierele care poartă propriul
+    # marker de sezon (ar fi din alt sezon)
+    ep_only = [
+        re.compile(rf"[\s._\-(\[]e0*{episode}(?!\d)", re.I),
+        re.compile(rf"ep0*{episode}(?!\d)", re.I),
+        re.compile(rf"0*{episode}\s*(?:серия|сер|выпуск)(?!\d)", re.I),
+        re.compile(rf"(?:серия|выпуск)\s*0*{episode}(?!\d)", re.I),
+    ]
+    has_season_marker = re.compile(r"s0*\d+(?!\d)|(?<!\d)\d+x\d+|сезон|sezon|season", re.I)
+    for i, f in enumerate(files):
+        nm = f.get("name") or ""
+        if has_season_marker.search(nm):
+            continue
+        if any(p.search(nm) for p in ep_only):
+            return i
     # nivelul 2: „07.08. Жуки.S04.2024.WEB-DL...” — sezon + episod ca număr izolat
     season_pat = re.compile(rf"s0*{season}(?!\d)", re.I)
     ep_pat = re.compile(rf"(?<!\d)0*{episode}(?!\d)")

@@ -148,3 +148,29 @@ def test_find_episode_file_nivelul2_numar_izolat():
     assert find_episode_file(files, 4, 3) == 1
     # fără sezonul în nume -> nivelul 2 nu se aplică
     assert find_episode_file([{"name": "07.08. altceva.mkv"}], 4, 7) is None
+
+
+def test_find_episode_file_episod_fara_sezon_in_nume():
+    from app.sources.torrents import find_episode_file
+
+    # nume reale din pachetul S1 „Жуки": sezonul doar în titlul pachetului
+    files = [
+        {"name": "Zhuki.e01.2019.WEB-DL.(720p).ExKinoRay.mkv"},
+        {"name": "Zhuki.e07.2019.WEB-DL.(720p).ExKinoRay.mkv"},
+        {"name": "Zhuki.e08.2019.WEB-DL.(720p).ExKinoRay.mkv"},
+        {"name": "Жуки - Фильм о сериале (2019).mkv"},
+    ]
+    assert find_episode_file(files, 1, 8) == 2
+    assert find_episode_file(files, 1, 1) == 0
+    assert find_episode_file(files, 1, 7) == 1
+    # filmul bonus nu se confundă cu vreun episod
+    assert find_episode_file(files, 1, 16) is None
+
+
+def test_find_episode_file_episod_simplu_nu_ia_alt_sezon():
+    from app.sources.torrents import find_episode_file
+
+    # fișier cu propriul marker de sezon (S02) nu se alege pentru sezonul 1
+    files = [{"name": "Show.s02e08.1080p.mkv"}, {"name": "Show.e08.mkv"}]
+    assert find_episode_file(files, 1, 8) == 1
+    assert find_episode_file(files, 2, 8) == 0

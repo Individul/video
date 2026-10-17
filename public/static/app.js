@@ -1115,7 +1115,8 @@ async function playEpisode(t, season, episode, seekTo = null) {
   for (const c of candidates) {
     try {
       const d = await startStream(c, { season, episode });
-      if (!data) { data = d; chosen = c; } // primul răspuns bun rămâne fallback
+      // fallback = pachetul cu cele mai multe fișiere (probabil conține episodul)
+      if (!data || d.files.length > data.files.length) { data = d; chosen = c; }
       if (d.matched !== false) { data = d; chosen = c; break; }
     } catch (_) {}
   }
