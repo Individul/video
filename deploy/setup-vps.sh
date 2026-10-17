@@ -37,6 +37,7 @@ echo "==> Curățare săptămânală a imaginilor Docker nefolosite"
 cat > /etc/cron.weekly/docker-prune <<'PRUNE'
 #!/bin/sh
 docker image prune -af --filter "until=168h" >/dev/null 2>&1
+docker builder prune -af >/dev/null 2>&1   # cache-ul de build (~1 GB după fiecare --build)
 PRUNE
 chmod +x /etc/cron.weekly/docker-prune
 
