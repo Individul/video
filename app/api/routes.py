@@ -107,6 +107,7 @@ def _title_to_dict(t: Title, with_details: bool = False) -> dict[str, Any]:
         d["cast"] = extra.get("cast") or []
         d["similar"] = extra.get("similar") or []
         d["seasons"] = extra.get("seasons") or []
+        d["backdrop"] = extra.get("backdrop")
     return d
 
 
@@ -348,13 +349,16 @@ async def _refresh_if_stale(db: AsyncSession, title: Title) -> Title:
         and datetime.now(UTC) - loaded < timedelta(hours=Config.DETAIL_CACHE_HOURS)
         and title.extra is not None
     )
-    if fresh and title.title_type == TitleType.SERIES:
-        # seriale vechi (înainte de încărcarea leneșă) -> o singură reîmprospătare rapidă
+    if fresh:
         try:
             extra = json.loads(title.extra) if title.extra else {}
         except (TypeError, ValueError):
             extra = {}
-        if not extra.get("seasons"):
+        # seriale vechi (înainte de încărcarea leneșă) -> o singură reîmprospătare rapidă
+        if title.title_type == TitleType.SERIES and not extra.get("seasons"):
+            fresh = False
+        # detalii salvate înainte să existe imaginea de fundal -> o reîmprospătare
+        if "backdrop" not in extra:
             fresh = False
     if fresh or not title.source_url:
         return title

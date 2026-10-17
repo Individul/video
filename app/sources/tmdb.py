@@ -225,6 +225,7 @@ class TmdbSource(BaseSource):
             cast=self._cast(media_type, tmdb_id),
             similar=self._similar(media_type, tmdb_id),
             seasons=seasons,
+            backdrop=_poster(data.get("backdrop_path"), base="https://image.tmdb.org/t/p/w1280"),
         )
 
     def season_episodes(self, source_url: str, season: int) -> list[EpisodeInfo]:

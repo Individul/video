@@ -816,3 +816,80 @@ main#content {
 
 /* hero skeleton ocupă locul hero-ului la încărcare */
 .rows:empty { display: none; }
+
+/* =================== DESKTOP: ecran mare =================== */
+:root { --card-w: 148px; }
+@media (min-width: 1500px) { :root { --card-w: 168px; } }
+.row-scroll .card { flex: 0 0 var(--card-w); }
+.grid, .search-results { grid-template-columns: repeat(auto-fill, minmax(var(--card-w), 1fr)); }
+
+/* rânduri: săgeți de derulare (mouse) — apar la hover pe rând */
+.row-track { position: relative; }
+.row-arrow {
+  position: absolute; top: 0; z-index: 3;
+  height: calc(var(--card-w) * 1.5);
+  width: 52px; border: none; cursor: pointer; color: var(--text);
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity 0.18s;
+}
+.row-arrow.left { left: -2.2rem; background: linear-gradient(90deg, var(--bg-content) 30%, transparent); }
+.row-arrow.right { right: -2.2rem; background: linear-gradient(270deg, var(--bg-content) 30%, transparent); }
+.row:hover .row-arrow { opacity: 0.9; }
+.row-arrow:hover { opacity: 1 !important; color: var(--accent); }
+.row-arrow.off { opacity: 0 !important; pointer-events: none; }
+@media (hover: none) { .row-arrow { display: none; } }
+
+/* hero: imaginea lată reală (cadru din film) peste posterul estompat, cu descriere */
+.hero-desc {
+  color: #dcdcdc; font-size: 0.95rem; line-height: 1.55;
+  margin-top: 0.8rem; max-width: 620px;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.hero-desc:empty { display: none; }
+.hero-backdrop.sharp {
+  inset: 0; filter: none;
+  background-position: center 22%;
+  opacity: 0; transition: opacity 0.7s ease;
+}
+.hero.has-backdrop .hero-backdrop.sharp { opacity: 1; }
+/* umbra pentru text acoperă tot hero-ul (pe .hero-inner lăsa o linie vizibilă deasupra) */
+.hero.has-backdrop .hero-inner { background: none; }
+.hero.has-backdrop::after {
+  content: ""; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(23, 24, 25, 0.96) 0%, rgba(23, 24, 25, 0.78) 34%, rgba(23, 24, 25, 0.15) 70%, transparent),
+    linear-gradient(to top, rgba(23, 24, 25, 0.9), transparent 45%);
+}
+
+/* fereastra filmului: imaginea lată în antet */
+.modal-backdrop.sharp {
+  inset: 0; filter: brightness(0.62);
+  background-position: center 22%;
+}
+.modal-head.has-backdrop::after {
+  content: ""; position: absolute; inset: 0; z-index: 0;
+  background:
+    linear-gradient(90deg, rgba(29, 31, 32, 0.94) 0%, rgba(29, 31, 32, 0.7) 45%, rgba(29, 31, 32, 0.2) 100%),
+    linear-gradient(to top, var(--bg), transparent 45%);
+}
+
+@media (min-width: 761px) {
+  .hero { min-height: 460px; }
+  .hero-inner { padding: 2.4rem 2.6rem 2.6rem; }
+  .hero.has-backdrop .hero-poster { display: none; } /* imaginea lată spune deja totul */
+  .hero.has-backdrop .hero-title { font-size: 2.5rem; -webkit-line-clamp: 2; }
+  .hero-skel { min-height: 460px; }
+
+  /* fereastra filmului mai lată, player mai mare */
+  .modal { padding: 2rem 1.5rem; }
+  .modal-panel { width: min(1180px, 100%); }
+  .modal-head { padding: 2rem 2.2rem; min-height: 300px; align-items: flex-end; }
+  .modal-head.has-backdrop { min-height: 340px; }
+  .modal-info h2 { font-size: 1.8rem; }
+  .modal-desc { max-width: 720px; }
+  .player-box video { max-height: 74vh; }
+}
+@media (max-width: 760px) {
+  .hero-desc { display: none; }
+  .row-arrow { display: none; }
+}

@@ -48,6 +48,7 @@ class TitleDetail:
     cast: list[dict] = field(default_factory=list)  # {name, character, profile}
     similar: list[dict] = field(default_factory=list)  # hit-uri {source, name, source_url, ...}
     seasons: list[dict] = field(default_factory=list)  # [{season, episodes}] — încărcare leneșă
+    backdrop: str | None = None  # imagine lată (cadru din film) pentru hero/fereastra de detalii
 
 
 class BaseSource(ABC):

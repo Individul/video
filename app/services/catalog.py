@@ -73,6 +73,7 @@ async def upsert_title_detail(session: AsyncSession, detail: TitleDetail) -> Tit
             "cast": detail.cast,
             "similar": detail.similar,
             "seasons": detail.seasons,
+            "backdrop": detail.backdrop,
         },
         ensure_ascii=False,
     )

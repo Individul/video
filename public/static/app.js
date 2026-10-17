@@ -218,7 +218,28 @@ function rowEl(titleText, titles, opts = {}) {
     b.addEventListener("click", opts.onMore);
     row.querySelector(".row-title").appendChild(b);
   }
-  row.appendChild(scroll);
+  // săgeți stânga/dreapta: cu mouse-ul (fără bare de derulare) rândul nu se putea derula
+  const track = document.createElement("div");
+  track.className = "row-track";
+  const arrow = (dir) => {
+    const b = document.createElement("button");
+    b.className = `row-arrow ${dir < 0 ? "left" : "right"}`;
+    b.setAttribute("aria-label", dir < 0 ? "Înapoi" : "Înainte");
+    b.tabIndex = -1;
+    b.innerHTML = `<svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor"><path d="${dir < 0 ? "M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12z" : "M8.6 16.6 10 18l6-6-6-6-1.4 1.4 4.6 4.6z"}"/></svg>`;
+    b.addEventListener("click", () => scroll.scrollBy({ left: dir * scroll.clientWidth * 0.85, behavior: "smooth" }));
+    return b;
+  };
+  const left = arrow(-1), right = arrow(1);
+  const updateArrows = () => {
+    left.classList.toggle("off", scroll.scrollLeft <= 4);
+    right.classList.toggle("off", scroll.scrollLeft + scroll.clientWidth >= scroll.scrollWidth - 4);
+  };
+  scroll.addEventListener("scroll", updateArrows, { passive: true });
+  new ResizeObserver(updateArrows).observe(scroll); // fără listeneri globali care se adună la fiecare randare
+  requestAnimationFrame(updateArrows);
+  track.append(left, scroll, right);
+  row.appendChild(track);
   return row;
 }
 
@@ -319,6 +340,7 @@ async function loadHome() {
             ${heroTitle.year ? `<span>${esc(heroTitle.year)}</span>` : ""}
             <span>film</span>
           </div>
+          <div class="hero-desc" id="hero-desc"></div>
           <div class="hero-actions">
             <button class="btn" id="hero-play">${svg(I.play)} Vizionează</button>
             <button class="btn ghost" id="hero-wl">${svg(I.star, 16)} ${state.watchlist.has(heroTitle.id) ? "În watchlist" : "Watchlist"}</button>
@@ -337,6 +359,7 @@ async function loadHome() {
         toast(err.message, false);
       }
     });
+    enrichHero(hero, heroTitle, seq);
   }
 
   const rows = document.createElement("div");
@@ -351,6 +374,30 @@ async function loadHome() {
   }
   rows.appendChild(rowEl("Filme populare", films.slice(1), { onMore: () => go("#/browse/films") }));
   rows.appendChild(rowEl("Seriale populare", series, { onMore: () => go("#/browse/series") }));
+}
+
+/* hero: după prima afișare (instant, cu posterul estompat) aducem detaliile titlului
+   și trecem pe imaginea lată reală + descriere, cu o tranziție lină */
+async function enrichHero(hero, title, seq) {
+  let d;
+  try {
+    d = await api(`/api/title/${title.id}`);
+  } catch (_) {
+    return; // rămâne varianta cu posterul estompat
+  }
+  if (seq !== viewSeq || !hero.isConnected) return;
+  if (d.description) hero.querySelector("#hero-desc").textContent = d.description;
+  if (!d.backdrop) return;
+  const img = new Image();
+  img.onload = () => {
+    if (!hero.isConnected) return;
+    const layer = document.createElement("div");
+    layer.className = "hero-backdrop sharp";
+    layer.style.backgroundImage = cssUrl(d.backdrop);
+    hero.querySelector(".hero-backdrop").after(layer);
+    requestAnimationFrame(() => hero.classList.add("has-backdrop"));
+  };
+  img.src = d.backdrop;
 }
 
 /* ================= BROWSE (cu filtre) ================= */
@@ -812,8 +859,8 @@ function renderModal(t, opts = {}) {
   const inWl = state.watchlist.has(t.id);
 
   modalBody.innerHTML = `
-    <div class="modal-head">
-      <div class="modal-backdrop" style="background-image:${cssUrl(t.poster)}"></div>
+    <div class="modal-head${t.backdrop ? " has-backdrop" : ""}">
+      <div class="modal-backdrop${t.backdrop ? " sharp" : ""}" style="background-image:${cssUrl(t.backdrop || t.poster)}"></div>
       <div class="modal-head-inner">
         <div class="modal-poster">${t.poster ? `<img alt="" src="${escUrl(t.poster)}">` : ""}</div>
         <div class="modal-info">
