@@ -88,7 +88,7 @@ def score_torrent(item: dict, query_year: int | None = None) -> tuple[float, str
         score += 2
     elif re.search(r"webrip|hdrip|hdtv|dvdrip", n):
         score += 1
-    if _RU_AUDIO_RE.search(n):
+    if has_ru_audio(name):
         # dominant: un release cu dublaj RU bate orice release EN de calitate mai bună
         score += 12
     if re.search(r"трейлер|trailer|промо|promo\b", n):
@@ -109,8 +109,18 @@ def score_torrent(item: dict, query_year: int | None = None) -> tuple[float, str
     return round(score, 2), q
 
 
+# marcaje de tip RuTracker/Rutor pentru dublaj rusesc:
+#  „Dub (Videofilm Int.)” — „Dub” simplu înseamnă dublaj RU; „Dub (Ukr)” e ucrainean
+#  „| D |”, „| D, P, A |”, „| D | Videofilm” — litera D în lista de piste audio
+_RU_DUB_WORD_RE = re.compile(r"\bdub\b(?!\s*\(\s*(?:ukr|укр|eng|англ|kaz|каз))", re.I)
+_RU_DUB_MARK_RE = re.compile(r"[|\[]\s*(?:[A-ZА-Я]\d?\s*,\s*)*D(?:\s*,\s*[A-ZА-Я]\d?)*\s*(?=[|\]\-]|$)")
+
+
 def has_ru_audio(name: str | None) -> bool:
-    return bool(_RU_AUDIO_RE.search((name or "").lower()))
+    name = name or ""
+    return bool(
+        _RU_AUDIO_RE.search(name.lower()) or _RU_DUB_WORD_RE.search(name) or _RU_DUB_MARK_RE.search(name)
+    )
 
 
 def dedupe_results(items: list[dict]) -> list[dict]:

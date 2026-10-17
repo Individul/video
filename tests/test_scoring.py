@@ -214,3 +214,29 @@ def test_find_episode_file_episod_simplu_nu_ia_alt_sezon():
     files = [{"name": "Show.s02e08.1080p.mkv"}, {"name": "Show.e08.mkv"}]
     assert find_episode_file(files, 1, 8) == 1
     assert find_episode_file(files, 2, 8) == 0
+
+
+# ---------- marcaje de dublaj RU în stil RuTracker/Rutor ----------
+
+def test_has_ru_audio_marcaje():
+    from app.sources.torrents import has_ru_audio
+
+    # nume reale din căutarea „Animals 2026”
+    assert has_ru_audio("Animals [2026, WEB-DL 1080p] Dub (Videofilm Int.) + Dub (Ukr) + Original (Eng) + Sub")
+    assert has_ru_audio("Животные / Animals (2026) WEB-DL 1080p | D | Videofilm Int.")
+    assert has_ru_audio("Животные / Animals (2026) WEB-DL 1080p от EniaHD | D")
+    assert has_ru_audio("Интерстеллар / Interstellar (2014) BDRip 1080p | IMAX Edition | D, Р, A-Лицензия")
+    assert has_ru_audio("Movie (2024) WEB-DL 1080p | P, D |")
+    assert has_ru_audio("Movie (2024) [D] 1080p")
+    # fără dublaj rusesc
+    assert not has_ru_audio("Movie [2024, WEB-DL 1080p] Dub (Ukr) + Original (Eng)")
+    assert not has_ru_audio("Movie 2024 1080p BluRay DTS-HD MA")
+    assert not has_ru_audio("Movie 2024 1080p | MVO |")  # voiceover, nu dublaj — aici nu-l considerăm
+    assert not has_ru_audio("Movie 2024 1080p WEB-DL H.264")
+    assert not has_ru_audio("Movie.2024.1080p.DD5.1.mkv")
+
+
+def test_scoring_dub_bate_varianta_nemarcata():
+    nemarcat = {"name": "Животные / Animals (2026) WEB-DL [H.264/1080p]", "size": "6 GB", "seeds": 40}
+    dub = {"name": "Животные / Animals (2026) WEB-DL 1080p | D | Videofilm Int.", "size": "6 GB", "seeds": 20}
+    assert score_torrent(dub, 2026)[0] > score_torrent(nemarcat, 2026)[0]
