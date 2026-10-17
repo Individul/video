@@ -261,6 +261,7 @@ function parseRoute() {
   if (seg[0] === "watchlist") return { view: "watchlist" };
   if (seg[0] === "continue") return { view: "continue" };
   if (seg[0] === "downloads") return { view: "downloads" };
+  if (seg[0] === "calendar") return { view: "calendar" };
   return { view: "home" };
 }
 function go(hash) {
@@ -373,6 +374,7 @@ async function render() {
   if (r.view === "watchlist") return loadWatchlist();
   if (r.view === "continue") return loadContinue();
   if (r.view === "downloads") return loadDownloads();
+  if (r.view === "calendar") return loadCalendar();
   return loadHome();
 }
 
@@ -701,6 +703,101 @@ async function loadContinue() {
   }
   content.innerHTML = "";
   content.appendChild(wrap);
+}
+
+/* ================= CALENDAR APARIȚII ================= */
+const CAL_KINDS = {
+  cinema: { label: "Cinema", cls: "k-cinema" },
+  digital: { label: "Digital", cls: "k-digital" }, // de obicei apare atunci și pe torrente
+  episode: { label: "Episod nou", cls: "k-episode" },
+};
+const CAL_FILTERS = [
+  ["all", "Toate"],
+  ["cinema", "Premiere în cinema"],
+  ["digital", "Lansări digitale"],
+  ["episode", "Episoade noi"],
+  ["mine", "Serialele mele"],
+];
+let calFilter = "all";
+
+async function loadCalendar() {
+  const seq = viewSeq;
+  content.innerHTML = `
+    <div class="grid-wrap">
+      <div class="view-title">Calendar apariții</div>
+      <div class="status">Se adună aparițiile… (prima dată după o repornire poate dura ~15 s)</div>
+    </div>`;
+  let data;
+  try {
+    data = await api("/api/calendar?back=7&ahead=60");
+  } catch (err) {
+    if (seq === viewSeq) content.innerHTML = `<div class="status error">Eroare: ${esc(err.message)}</div>`;
+    return;
+  }
+  if (seq !== viewSeq) return;
+
+  const today = data.today;
+  const tomorrow = new Date(new Date(today + "T12:00:00").getTime() + 864e5).toISOString().slice(0, 10);
+  const dayLabel = (d) => {
+    const long = new Date(d + "T12:00:00").toLocaleDateString("ro-RO", { weekday: "long", day: "numeric", month: "long" });
+    return d === today ? `Azi · ${long}` : d === tomorrow ? `Mâine · ${long}` : long[0].toUpperCase() + long.slice(1);
+  };
+  const counts = { all: data.events.length, mine: data.events.filter((e) => e.followed).length };
+  data.events.forEach((e) => (counts[e.kind] = (counts[e.kind] || 0) + 1));
+  if (calFilter !== "all" && !counts[calFilter]) calFilter = "all"; // filtrul ales data trecută nu mai are nimic
+
+  const wrap = document.createElement("div");
+  wrap.className = "grid-wrap cal-page";
+  wrap.innerHTML = `
+    <div class="view-title">Calendar apariții</div>
+    <div class="cal-hint">Ultimele 7 zile și următoarele 60. „Digital” = lansarea WEB-DL, momentul în care filmul apare de obicei pe torrente.</div>
+    <div class="q-filter cal-filter">${CAL_FILTERS.filter(([k]) => k === "all" || counts[k])
+      .map(([k, l]) => `<button data-f="${k}" class="${k === calFilter ? "on" : ""}">${esc(l)} <small>${counts[k] || 0}</small></button>`)
+      .join("")}</div>
+    <div id="cal-days"></div>`;
+  content.innerHTML = "";
+  content.appendChild(wrap);
+
+  const daysBox = wrap.querySelector("#cal-days");
+  const draw = () => {
+    const shown = data.events.filter((e) =>
+      calFilter === "all" ? true : calFilter === "mine" ? e.followed : e.kind === calFilter
+    );
+    daysBox.innerHTML = shown.length ? "" : `<div class="status">Nimic în perioada asta.</div>`;
+    const byDay = new Map();
+    shown.forEach((e) => (byDay.has(e.date) ? byDay.get(e.date) : byDay.set(e.date, []).get(e.date)).push(e));
+    for (const [d, evs] of byDay) {
+      const sec = document.createElement("section");
+      sec.className = "cal-day" + (d < today ? " past" : d === today ? " today" : "");
+      sec.innerHTML = `<div class="cal-day-head">${esc(dayLabel(d))}<span>${evs.length}</span></div><div class="grid"></div>`;
+      const grid = sec.querySelector(".grid");
+      evs.forEach((e) => {
+        const k = CAL_KINDS[e.kind] || CAL_KINDS.cinema;
+        const sub = e.kind === "episode"
+          ? `S${e.season} · E${e.episode}${e.episode_name && !/^(Episode|Эпизод|Серия)\s*\d+$/i.test(e.episode_name) ? " · " + e.episode_name : ""}`
+          : `${e.title.year || ""}${e.title.year ? " · " : ""}${k.label}`;
+        const card = cardEl(e.title, { sub, accent: e.kind === "episode" });
+        const badge = document.createElement("div");
+        badge.className = `cal-badge ${k.cls}`;
+        badge.textContent = e.followed ? `★ ${k.label}` : k.label;
+        card.querySelector(".card-poster").appendChild(badge);
+        grid.appendChild(card);
+      });
+      daysBox.appendChild(sec);
+    }
+    // derulăm la ziua de azi (sau prima zi viitoare); zilele trecute rămân deasupra
+    const first = daysBox.querySelector(".cal-day.today, .cal-day:not(.past)");
+    if (first && daysBox.querySelector(".cal-day.past")) first.scrollIntoView({ block: "start" });
+    else window.scrollTo(0, 0);
+  };
+  wrap.querySelectorAll(".cal-filter button").forEach((b) =>
+    b.addEventListener("click", () => {
+      calFilter = b.dataset.f;
+      wrap.querySelectorAll(".cal-filter button").forEach((x) => x.classList.toggle("on", x === b));
+      draw();
+    })
+  );
+  draw();
 }
 
 /* ================= DESCĂRCĂRI (cache TorrServer) ================= */

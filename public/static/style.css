@@ -999,3 +999,28 @@ main#content {
   .person-photo { width: 140px; }
   .person-info h1 { font-size: 1.5rem; }
 }
+
+/* =================== calendar apariții =================== */
+.cal-hint { color: var(--sub); font-size: 0.86rem; margin: -0.4rem 0 1rem; }
+.cal-filter { margin: 0 0 1.2rem !important; }
+.cal-filter small { opacity: 0.7; margin-left: 2px; }
+.cal-day { margin-bottom: 1.8rem; scroll-margin-top: 1rem; }
+.cal-day.past { opacity: 0.6; }
+.cal-day-head {
+  display: flex; align-items: center; gap: 0.6rem;
+  font-size: 1.05rem; font-weight: 700; margin-bottom: 0.8rem;
+  padding-bottom: 0.45rem; border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+.cal-day-head span {
+  font-size: 0.72rem; font-weight: 700; color: var(--sub);
+  background: var(--card); border-radius: 999px; padding: 1px 8px;
+}
+.cal-day.today .cal-day-head { color: var(--accent); border-bottom-color: rgba(255, 226, 22, 0.35); }
+.cal-badge {
+  position: absolute; left: 8px; top: 8px;
+  font-size: 0.66rem; font-weight: 800; border-radius: 6px; padding: 2px 7px;
+  background: rgba(0, 0, 0, 0.72); color: var(--text);
+}
+.cal-badge.k-cinema { color: #ffb36b; }
+.cal-badge.k-digital { color: var(--success); }
+.cal-badge.k-episode { color: #8fb6ff; }

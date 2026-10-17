@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -436,6 +437,39 @@ async def title_detail(
     d["recommendations"] = await _hits_with_ids(db, d["recommendations"])
     await db.commit()
     return d
+
+
+@router.get("/calendar")
+async def calendar_events(
+    back: int = Query(7, ge=0, le=30),
+    ahead: int = Query(60, ge=1, le=120),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """Calendarul aparițiilor: premiere în cinema, lansări digitale, episoade noi.
+    Serialele „tale” = cele din watchlist sau din istoric (sunt marcate followed)."""
+    from app.sources import calendar as cal
+
+    rows = (
+        await db.scalars(
+            select(Title.source_url)
+            .where(Title.source == "tmdb", Title.title_type == TitleType.SERIES)
+            .where(
+                Title.id.in_(select(WatchlistItem.title_id)) | Title.id.in_(select(HistoryItem.title_id))
+            )
+        )
+    ).all()
+    followed = [int(m.group(1)) for u in rows if (m := re.search(r"/tv/(\d+)", u or ""))]
+    try:
+        events = await asyncio.to_thread(cal.calendar, back, ahead, followed)
+    except SourceError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    titles = await _hits_with_ids(db, [e["hit"] for e in events])
+    await db.commit()
+    out = []
+    for e, t in zip(events, titles):
+        e = {k: v for k, v in e.items() if k != "hit"}
+        out.append({**e, "title": t})
+    return {"today": datetime.now().date().isoformat(), "events": out}
 
 
 @router.get("/person/{person_id}")
