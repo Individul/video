@@ -1206,9 +1206,59 @@ function renderPlayer(t, source, data, { season = null, episode = null, seekTo =
   }
   trackProgress(video, t, s, e);
 
-  // la final de episod: marchează-l văzut și oferă următorul
+  // „Urmează": apare cu 30s înainte de final; la final, countdown 8s și auto-avans
   if (s != null && e != null) {
+    const nextEp = () => (epsBySeason[s] || []).find((x) => x.episode === e + 1);
+    let nextOv = null;
+    let countdownTimer = null;
+    let cancelled = false;
+
+    const hideNext = () => {
+      if (countdownTimer) clearInterval(countdownTimer);
+      countdownTimer = null;
+      if (nextOv) { nextOv.remove(); nextOv = null; }
+    };
+    const goNext = () => {
+      hideNext();
+      playEpisode(t, s, e + 1);
+    };
+    const showNext = (withCountdown) => {
+      const nx = nextEp();
+      if (!nx) return;
+      hideNext();
+      nextOv = document.createElement("div");
+      nextOv.className = "next-ep";
+      nextOv.innerHTML = `
+        <button class="btn" id="next-go">▶ Urmează: ${e + 1}. ${esc(nx.name || "episodul")}</button>
+        <span class="next-count" id="next-count"></span>
+        <button class="btn ghost small" id="next-cancel" title="Nu avansa">✕ Rămân</button>`;
+      playerBox.prepend(nextOv);
+      nextOv.querySelector("#next-go").addEventListener("click", goNext);
+      nextOv.querySelector("#next-cancel").addEventListener("click", () => {
+        cancelled = true;
+        hideNext();
+      });
+      if (withCountdown) {
+        let left = 8;
+        const countEl = nextOv.querySelector("#next-count");
+        countdownTimer = setInterval(() => {
+          if (left <= 0) { goNext(); return; }
+          countEl.textContent = `auto în ${left--}s`;
+        }, 1000);
+        countEl.textContent = `auto în ${left--}s`;
+      }
+    };
+
+    video.addEventListener("timeupdate", () => {
+      if (cancelled) return;
+      const d = video.duration;
+      if (!d) return;
+      const remaining = d - video.currentTime;
+      if (remaining <= 30 && !nextOv && !countdownTimer) showNext(false);
+      else if (remaining > 32 && nextOv && !countdownTimer) hideNext(); // seek înapoi
+    });
     video.addEventListener("ended", () => {
+      // marchează episodul ca văzut complet
       api("/api/history", {
         method: "POST",
         body: JSON.stringify({
@@ -1216,16 +1266,7 @@ function renderPlayer(t, source, data, { season = null, episode = null, seekTo =
           position_seconds: video.duration || 1, duration_seconds: video.duration || null,
         }),
       }).catch(() => {});
-      const next = (epsBySeason[s] || []).find((x) => x.episode === e + 1);
-      if (!next) return;
-      let ov = playerBox.querySelector(".next-ep");
-      if (ov) ov.remove();
-      ov = document.createElement("div");
-      ov.className = "next-ep";
-      ov.innerHTML = `<button class="btn">▶ Urmează: ${e + 1}. ${esc(next.name || "episodul")}</button>`;
-      ov.querySelector("button").addEventListener("click", () => playEpisode(t, s, e + 1));
-      playerBox.prepend(ov);
-      ov.scrollIntoView({ block: "center" });
+      if (!cancelled && nextEp()) showNext(true);
     });
   }
 

@@ -28,8 +28,16 @@
 }
 .eps-more-wrap { display: flex; justify-content: center; margin: 0 1.8rem 0.8rem; }
 
-/* următorul episod, la finalul celui curent */
-.next-ep { display: flex; justify-content: center; margin: 0.6rem 0; }
+/* următorul episod: apare cu 30s înainte de final, auto-avans cu countdown */
+.next-ep {
+  display: flex; align-items: center; justify-content: center; gap: 0.7rem;
+  margin: 0.6rem 0;
+  background: var(--card);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 12px;
+  padding: 0.55rem 0.9rem;
+}
+.next-count { color: var(--sub); font-size: 0.85rem; min-width: 84px; text-align: center; }
 
 /* ---------- trailer embed în modal ---------- */
 .trailer-wrap {
