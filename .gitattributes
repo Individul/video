@@ -1,0 +1,5 @@
+# scripturile și configurările rulate pe Linux rămân cu LF
+*.sh text eol=lf
+Caddyfile text eol=lf
+docker-compose.yml text eol=lf
+.env.vps.example text eol=lf

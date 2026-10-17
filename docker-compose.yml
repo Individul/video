@@ -1,38 +1,102 @@
-# vid pe VPS: portalul + (opțional) TorrServer local, cu date persistente în ./data și ./torrserver
-# Dacă folosești un TorrServer la distanță: pune în .env TORRSERVER_URL + TORRSERVER_AUTH
-# și pornește doar portalul:  docker compose up -d --build vid
+# Cinema pe VPS (1 vCPU / 1,5 GB RAM / 10 GB disc): portal + TorrServer + Jackett + FlareSolverr,
+# toate în rețeaua internă docker. Spre internet e expus DOAR Caddy (80/443, HTTPS automat)
+# și portul de peers al TorrServer (6881), pentru viteză la torrenți.
+#
+# Browserul nu vorbește direct cu TorrServer: primește /ts/stream/..., iar Caddy verifică
+# întâi cookie-ul portalului (forward_auth) și abia apoi trimite cererea la TorrServer.
+#
+# Pornire: docker compose up -d --build      Date persistente: ./data ./torrserver ./jackett
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"   # loguri plafonate: discul de 10 GB nu se umple în timp
+    max-file: "3"
+
 services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      - DOMAIN=${DOMAIN:?seteaza DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data        # certificatele HTTPS
+      - caddy_config:/config
+    depends_on: [vid, torrserver]
+    mem_limit: 128m
+    logging: *logging
+    restart: unless-stopped
+
   vid:
     build: .
     container_name: vid
     environment:
       - TMDB_API_KEY=${TMDB_API_KEY}
       - TMDB_LANG=${TMDB_LANG:-ru-RU}
-      - APP_PASSWORD=${APP_PASSWORD}
-      - APP_SECRET=${APP_SECRET}
+      - APP_PASSWORD=${APP_PASSWORD:?seteaza APP_PASSWORD in .env}
+      - APP_SECRET=${APP_SECRET:?seteaza APP_SECRET in .env}
+      - HTTPS_ON=1
       - PROXY=${PROXY:-}
-      - TORRSERVER_URL=${TORRSERVER_URL:-http://torrserver:8090}
-      - TORRSERVER_AUTH=${TORRSERVER_AUTH:-}
-      - TORZNAB_URL=${TORZNAB_URL:-}
+      - TORRSERVER_URL=http://torrserver:8090
+      - STREAM_PROXY_PATH=/ts
+      - TORZNAB_URL=http://jackett:9117
       - TORZNAB_API_KEY=${TORZNAB_API_KEY:-}
       - OS_API_KEY=${OS_API_KEY:-}
-      - HTTPS_ON=${HTTPS_ON:-}
     volumes:
       - ./data:/data
-    ports:
-      - "127.0.0.1:8000:8000"   # accesibil doar local pe VPS; spre internet merge prin tunel/reverse-proxy
+    mem_limit: 384m          # ffmpeg (extragerea subtitrărilor) rulează tot aici
+    logging: *logging
     restart: unless-stopped
+    # fără ports: îl vede doar Caddy
 
   torrserver:
     image: ghcr.io/yourok/torrserver:latest
     container_name: torrserver
-    profiles: ["local-torrserver"]   # pornește doar cu: docker compose --profile local-torrserver up -d
     environment:
-      - TS_CONF_DIR=/config
       - TS_PORT=8090
-      - TORRSERVER_PORT=8090
-      - AUTHPASSWORD=${TORR_PASSWORD:-vidlocal}
+      - TS_CONF_PATH=/opt/ts/config
+      - TS_DONTKILL=1
     volumes:
-      - ./torrserver:/config
+      - ./torrserver:/opt/ts/config   # settings.json + config.db (cache doar în RAM, UseDisk=false)
+    ports:
+      - "6881:6881"          # peers BitTorrent (PeersListenPort din settings.json)
+      - "6881:6881/udp"
+    mem_limit: 512m          # 96 MB cache + overhead
+    logging: *logging
     restart: unless-stopped
-    # fără ports: răspunde doar în rețeaua internă docker, pentru vid
+    # 8090 NU e publicat: interfața și stream-urile se ating doar prin Caddy, după login
+
+  jackett:
+    image: lscr.io/linuxserver/jackett:latest
+    container_name: jackett
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=${TZ:-Europe/Chisinau}
+      - AUTO_UPDATE=false    # imaginea se actualizează cu docker compose pull
+    volumes:
+      - ./jackett:/config
+    ports:
+      - "127.0.0.1:9117:9117"   # interfața web doar prin tunel SSH (vezi README-WEB)
+    mem_limit: 384m
+    logging: *logging
+    restart: unless-stopped
+
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: flaresolverr
+    environment:
+      - LOG_LEVEL=info
+      - TZ=${TZ:-Europe/Chisinau}
+    mem_limit: 768m          # Chromium pornește doar la nevoie; dacă depășește, cade doar el
+    logging: *logging
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

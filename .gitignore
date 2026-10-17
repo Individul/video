@@ -22,3 +22,7 @@ tools/
 # volume VPS (nu intra in git)
 data/
 torrserver/
+jackett/
+
+# date de mutat pe VPS (copii locale, nu intră în git)
+transfer/

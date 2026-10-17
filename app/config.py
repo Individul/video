@@ -37,6 +37,9 @@ class Config:
     TORRSERVER_URL = os.getenv("TORRSERVER_URL", "http://127.0.0.1:8090").rstrip("/")
     # autentificare TorrServer, format "utilizator:parola" (Basic auth;utilizator poate fi orice)
     TORRSERVER_AUTH = os.getenv("TORRSERVER_AUTH") or None
+    # VPS: browserul primește stream-urile pe această cale a portalului (ex. /ts), pe care
+    # Caddy o trimite la TorrServer-ul intern; gol = browserul accesează TorrServer direct (local)
+    STREAM_PROXY_PATH = (os.getenv("STREAM_PROXY_PATH") or "").rstrip("/") or None
 
     # Cautarea magneților pe Rutor (mirror-uri în ordinea de fallback)
     RUTOR_MIRRORS: list[str] = [

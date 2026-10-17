@@ -1,107 +1,140 @@
-# vid pe web (VPS) — ghid de instalare
+# Cinema pe VPS — ghid de mutare
 
-Portalul rulează 24/7 pe un server mic, independent de calculatorul tău.
-Aplicația + TorrServer rulează în Docker, cu parolă de acces.
+Totul rulează 24/7 pe VPS, în Docker: portalul, TorrServer, Jackett și FlareSolverr.
+Calculatorul de acasă nu mai e necesar.
 
-## De ce ai nevoie
+```
+browser ──HTTPS──▶ Caddy ──▶ vid (portal, parolă)
+                     │
+                     └─/ts/stream/*──(doar după login)──▶ TorrServer ──▶ peers BitTorrent (port 6881)
+                                                vid ──▶ Jackett ──▶ FlareSolverr
+```
 
-- un VPS mic (ex. Hetzner CX22 ~4 €/lună sau Contabo; 2 GB RAM ajung pentru 1-3 utilizatori)
-- Ubuntu 22.04/24.04 proaspăt
-- cheia TMDB (cea din `.env`-ul tău local)
-- (opțional, recomandat) un domeniu — pentru HTTPS prin Cloudflare Tunnel (~10 €/an orice domeniu)
+- Spre internet sunt deschise doar Caddy (80/443) și portul de peers 6881.
+- Video-ul trece prin Caddy. Caddy verifică întâi cookie-ul portalului, deci fără login nu se poate viziona nimic.
+- Interfața TorrServer nu e accesibilă din internet. Interfața Jackett se deschide doar prin tunel SSH.
 
-## 1. Pregătirea serverului (o singură dată)
+Gândit pentru: 1 vCPU, 1,5 GB RAM, 10 GB disc, 1 utilizator. Fiecare container are o limită de memorie, iar scriptul de instalare adaugă 2 GB swap.
+
+## 0. Înainte de cumpărare
+
+- În termenii furnizorului: **traficul lunar** inclus și dacă **P2P/BitTorrent** e permis.
+  - Un film trece de două ori prin VPS: o dată de la peers și o dată spre tine.
+- Un **domeniu** cu un record DNS `A` spre IP-ul VPS-ului, necesar pentru HTTPS.
+  - Merge și unul gratuit, de exemplu DuckDNS (`ceva.duckdns.org`).
+
+## 1. Serverul (o singură dată)
 
 ```bash
 ssh root@IP_VPS
-apt update && apt upgrade -y
-# Docker + Compose
-curl -fsSL https://get.docker.com | sh
+git clone -b vps https://github.com/Individul/video.git /opt/vid
+cd /opt/vid
+bash deploy/setup-vps.sh      # update, swap 2 GB, firewall, Docker
 ```
 
-## 2. Urcarea proiectului
+Recomandat: autentificare SSH doar cu cheie. Copiezi cheia cu `ssh-copy-id root@IP_VPS`, apoi setezi `PasswordAuthentication no` în `/etc/ssh/sshd_config` și rulezi `systemctl restart ssh`.
 
-Din calculatorul tău (proiectul nu e încă pe git — cel mai simplu cu scp/rsync):
-
-```bash
-rsync -av --exclude .venv --exclude __pycache__ --exclude data --exclude torrserver \
-      --exclude vid.db --exclude subs --exclude "*.log" --exclude .env \
-      /c/Users/prisa/vid/ root@IP_VPS:/opt/vid/
-```
-
-(sau comprimă folderul și îl urci cu scp, apoi despachetezi în `/opt/vid`)
-
-## 3. Configurarea (.env pe server)
+## 2. Configurarea
 
 ```bash
 cd /opt/vid
-cat > .env <<'EOF'
-TMDB_API_KEY=cheia_ta_tmbd
-APP_PASSWORD=o-parola-puternica
-APP_SECRET=un-sir-lung-aleator-cccc-44-de-caractere
-# doar dacă Rutor/BTDig sunt blocate de pe IP-ul datacenterului:
-# PROXY=http://user:parola@adresa-proxy:port
-# opțional:
-# TORZNAB_URL=http://jackett:9117/torznab
-# TORZNAB_API_KEY=cheia-jackett
-# OS_API_KEY=cheia-opensubtitles
-# HTTPS_ON=1   # dacă termini HTTPS în fața (tunel/reverse-proxy)
-EOF
+cp .env.vps.example .env
+nano .env        # DOMAIN, APP_PASSWORD, APP_SECRET, TMDB_API_KEY, TORZNAB_API_KEY
 chmod 600 .env
 ```
 
-`APP_SECRET` îl generezi cu: `python3 -c "import secrets; print(secrets.token_hex(32))"`
-**Important:** nu schimba APP_SECRET-ul ulterior — invalidatează sesiunile.
+## 3. Datele de acasă
+
+Pe Windows, folderul `C:\Users\prisa\vid-vps\transfer\` conține deja:
+
+| În `transfer/` | Ce e | Pe VPS |
+|---|---|---|
+| `data/vid.db` | watchlist (5), istoric (26), 610 titluri | `/opt/vid/data/` |
+| `data/subs/` | subtitrări extrase din MKV | `/opt/vid/data/subs/` |
+| `torrserver/settings.json` | setări TorrServer adaptate pentru VPS: cache 96 MB în RAM, upload limitat la 1 MB/s, port 6881 | `/opt/vid/torrserver/` |
+| `torrserver/config.db` | lista torrenților TorrServer | `/opt/vid/torrserver/` |
+| `torrserver/settings.windows.json` | setările originale, doar ca referință | — |
+
+**Jackett îl copiezi tu**, pentru că fișierele lui conțin login-urile tale la trackere:
+
+1. Închide Jackett pe Windows.
+2. Copiază `C:\ProgramData\Jackett\ServerConfig.json` în `transfer\jackett\Jackett\`.
+3. Copiază și folderul `C:\ProgramData\Jackett\Indexers\` în `transfer\jackett\Jackett\`. Fișierele `.bak` nu sunt necesare.
+
+Apoi urci totul, din Git Bash pe Windows:
+
+```bash
+cd /c/Users/prisa/vid-vps/transfer
+scp -r data torrserver jackett root@IP_VPS:/opt/vid/
+```
+
+Pe VPS:
+
+```bash
+cd /opt/vid
+chown -R 1000:1000 jackett     # containerul Jackett rulează ca utilizatorul 1000
+```
 
 ## 4. Pornirea
 
 ```bash
-cd /opt/vid && docker compose up -d --build
-docker compose logs -f vid   # urmărește pornirea (Ctrl+C ca să ieși)
-curl -I http://127.0.0.1:8000/api/auth/status  # pe VPS: trebuie răspuns 200
+cd /opt/vid
+docker compose up -d --build
+docker compose ps              # toate „running”
+docker compose logs -f caddy   # urmărește obținerea certificatului HTTPS
 ```
 
-## 5. HTTPS + acces de pe internet (recomandat: Cloudflare Tunnel)
+Deschide `https://DOMENIUL-TAU` și loghează-te cu `APP_PASSWORD`.
 
-Varianta cea mai sigură — fără porturi deschise, cu HTTPS automat:
+## 5. Jackett pe VPS
+
+Interfața Jackett se deschide doar prin tunel SSH. De pe Windows:
 
 ```bash
-# pe VPS
-docker run -d --name cloudflared --restart unless-stopped \
-  --network host cloudflare/cloudflared:latest tunnel --no-autoupdate
-# urmează wizard-ul: docker logs -f cloudflared → deschide linkul de login,
-# apoi asociază hostname-ul (ex. vid.domeniulta.ro) → service http://localhost:8000
+ssh -L 9117:127.0.0.1:9117 root@IP_VPS
 ```
 
-Alternativa rapidă (fără domeniu): Caddy ca reverse-proxy cu un domeniu ieftin,
-sori (temporar) `ssh -L 8000:127.0.0.1:8000 root@IP_VPS` din browserul local.
+Apoi deschide <http://localhost:9117> pe calculatorul tău.
 
-## Note importante
+1. **FlareSolverr API URL** (jos, în setări): schimbă `http://127.0.0.1:8191` în `http://flaresolverr:8191` și apasă **Apply server settings**.
+2. Apasă **Test All**. Dacă un indexer cu cont (rutracker, kinozal…) dă eroare de login, reintrodu-i parola din butonul cheie.
+   - Cauza: Windows criptează parolele salvate cu chei care nu se mută pe Linux.
+3. Cheia API din colțul dreapta-sus trebuie să fie aceeași cu `TORZNAB_API_KEY` din `.env`. Dacă ai schimbat-o, actualizeaz-o și rulează `docker compose up -d`.
 
-- **TorrServer la distanță** (deja găzduit în altă parte): nu mai rula containerul local deloc —
-  pune în `.env`:
-  ```
-  TORRSERVER_URL=http://adresa-torrserver:port
-  TORRSERVER_AUTH=utilizator:parola
-  ```
-  și pornește doar `docker compose up -d --build vid`. Tot traficul de torente curge prin
-  TorrServer-ul respectiv; VPS-ul tău face doar catalog + parser (ușor și discret).
-- **Rutor/BTDig de pe IP de datacenter**: adesea răspund cu pagina de blocare sau nimic.
-  Dacă căutarea de magneți nu merge pe VPS dar merge acasă, configurează `PROXY`
-  în `.env` (un proxy rezidențial sau propriul server de acasă) și `docker compose up -d`.
-- **Jackett**: dacă vrei și indexerele din Jackett, adaugă un container `linuxserver/jackett`
-  în compose și pune `TORZNAB_URL=http://jackett:9117/torznab` + cheia.
-- **Datele** (DB, subtitrări extrase, cache TorrServer) stau în `/opt/vid/data` și
-  `/opt/vid/torrserver` — fă backup la folderul ăsta dacă vrei să muți serverul.
-- **Update**: copiezi fișierele noi peste (rsync), apoi `docker compose up -d --build`.
-- Portalul e gândit pentru un cerc mic (tu + familia). Fie sesiune e partajată
-  (un singur watchlist/istoric comun).
+## 6. Verificare
 
-## Comenzi utile
+- [ ] Login, pagina principală, căutare titlu
+- [ ] Căutare magneți (Rutor, BTDig, Jackett) la un film
+- [ ] Redare film; derulare înainte și înapoi
+- [ ] Redare episod de serial (alegerea automată a fișierului)
+- [ ] Subtitrări: din torrent (.srt) și extrase din MKV
+- [ ] Fără login: `https://DOMENIUL-TAU/ts/stream/x` trebuie să dea 401
+- [ ] `free -h` și `docker stats` arată memorie liberă când rulează un film
+
+Dacă Rutor sau BTDig nu găsesc nimic pe VPS, dar acasă merg, cel mai probabil blochează IP-urile de datacenter. Setează `PROXY` în `.env`, apoi rulează `docker compose up -d`.
+
+## 7. Întreținere
 
 ```bash
-docker compose ps            # stare
-docker compose logs -f vid   # loguri aplicație
-docker compose restart       # repornire
-docker compose down          # oprire
+cd /opt/vid
+git pull && docker compose up -d --build      # update cod
+docker compose pull && docker compose up -d   # update imagini (TorrServer, Jackett, ...)
+docker compose logs -f vid                    # loguri portal
+docker stats                                  # memorie per container
+df -h /                                       # spațiu pe disc
 ```
+
+Backup zilnic: păstrează ultimele 7 arhive în `/opt/vid/backups`.
+
+```bash
+chmod +x /opt/vid/deploy/backup.sh
+ln -s /opt/vid/deploy/backup.sh /etc/cron.daily/cinema-backup
+```
+
+Descarcă din când în când arhivele acasă cu `scp root@IP_VPS:/opt/vid/backups/cinema-*.tar.gz .`. Arhivele conțin parole, așa că păstrează-le în siguranță.
+
+Dacă `dmesg | grep -i oom` arată containere oprite din lipsă de memorie, cel mai probabil e de vină FlareSolverr. Treci la un plan cu mai mult RAM: mutarea înseamnă doar să copiezi `/opt/vid`.
+
+## După mutare (pe Windows)
+
+Dezactivează pornirea automată din `autostart/start_vid.bat`, care pornea TorrServer, FlareSolverr și serverul web local. Folderul `C:\Users\prisa\vid` rămâne neschimbat și poți reveni oricând la el.

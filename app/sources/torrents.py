@@ -231,8 +231,14 @@ def ts_auth() -> tuple[str, str] | None:
 
 
 def ts_stream_url(url: str) -> str:
-    """URL-ul de stream predat browserului; cu parolă activă, înglobează
-    credențialele (http://user:pass@host/...) ca video elementul să le trimită."""
+    """URL-ul de stream predat browserului.
+
+    Cu STREAM_PROXY_PATH (VPS): cale relativă la portal (/ts/stream/...), pe care Caddy
+    o trimite la TorrServer-ul intern după ce verifică autentificarea — parola TorrServer
+    nu ajunge în browser. Altfel (local): URL-ul direct, cu credențialele înglobate."""
+    if Config.STREAM_PROXY_PATH:
+        u = urlparse(url)
+        return f"{Config.STREAM_PROXY_PATH}{u.path}" + (f"?{u.query}" if u.query else "")
     auth = ts_auth()
     if not auth:
         return url
@@ -240,6 +246,15 @@ def ts_stream_url(url: str) -> str:
     if url.startswith(f"{prefix}{auth[0]}:"):
         return url  # deja înglobat
     return url.replace(prefix, f"{prefix}{auth[0]}:{auth[1]}@", 1)
+
+
+def ts_internal_url(url: str) -> str:
+    """Inversul lui ts_stream_url pentru căile proxy: /ts/stream/... -> TORRSERVER_URL/stream/...
+    (serverul vorbește direct cu TorrServer-ul intern). Restul URL-urilor rămân neschimbate."""
+    prefix = Config.STREAM_PROXY_PATH
+    if prefix and url.startswith(prefix + "/"):
+        return Config.TORRSERVER_URL + url[len(prefix):]
+    return url
 
 
 # ----------------- Jackett / Torznab (optional, normalizat) -----------------
