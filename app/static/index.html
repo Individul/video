@@ -6,7 +6,7 @@
 <title>Cinema</title>
 <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 <link rel="apple-touch-icon" href="/static/favicon.svg">
-<link rel="stylesheet" href="/static/style.css?v=25">
+<link rel="stylesheet" href="/static/style.css?v=28">
 </head>
 <body>
 
@@ -44,15 +44,15 @@
   <div class="search-box">
     <svg viewBox="0 0 24 24"><path d="M15.5 14h-.8l-.3-.3a6.5 6.5 0 1 0-.7.7l.3.3v.8l5 5 1.5-1.5-5-5zm-6 0a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>
     <input id="search-input" type="search" placeholder="Caută filme și seriale... (Enter pentru tot)" autocomplete="off">
-    <button id="search-close" class="search-close">&times;</button>
+    <button id="search-close" class="search-close" aria-label="Închide căutarea">&times;</button>
   </div>
   <div id="search-results" class="search-results"></div>
 </div>
 
 <!-- Modal detaliu -->
-<div id="modal" class="modal hidden">
+<div id="modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Detalii titlu">
   <div class="modal-panel">
-    <span id="modal-close" class="modal-close">&times;</span>
+    <button id="modal-close" class="modal-close" aria-label="Închide">&times;</button>
     <div id="modal-body"></div>
   </div>
   <div id="modal-fade" class="scroll-fade hidden"></div>
@@ -69,6 +69,6 @@
   </div>
 </div>
 
-<script src="/static/app.js?v=22"></script>
+<script src="/static/app.js?v=24"></script>
 </body>
 </html>

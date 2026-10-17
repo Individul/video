@@ -61,11 +61,28 @@ async function tryLogin() {
   }
 }
 
+const ESC_MAP = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 function esc(s) {
-  return String(s == null ? "" : s).replace(/</g, "&lt;");
+  return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ESC_MAP[c]);
 }
-function escUrl(s) {
-  return String(s == null ? "" : s).replace(/"/g, "&quot;");
+const escUrl = esc;
+/* URL în style="background-image:url('…')": entitățile HTML se decodează înainte de CSS,
+   deci ghilimelele/parantezele se codifică URL (%27 etc.), nu ca entități */
+function cssUrl(s) {
+  const enc = String(s == null ? "" : s).replace(/['"()\\\s<>]/g, (c) => "%" + c.charCodeAt(0).toString(16).padStart(2, "0"));
+  return `url('${esc(enc)}')`;
+}
+/* card/rând clicabil și de la tastatură (Enter/Space), nu doar cu mouse-ul */
+function makeActivatable(el, fn, label) {
+  el.tabIndex = 0;
+  el.setAttribute("role", "button");
+  if (label) el.setAttribute("aria-label", label);
+  el.addEventListener("click", fn);
+  el.addEventListener("keydown", (e) => {
+    if (e.target !== el || (e.key !== "Enter" && e.key !== " ")) return;
+    e.preventDefault();
+    fn(e);
+  });
 }
 function fmtTime(sec) {
   if (!sec || sec < 0) return "0:00";
@@ -150,22 +167,37 @@ function cardEl(title, opts = {}) {
     progress = `<div class="card-progress"><i style="width:${pct}%"></i></div>`;
   }
 
+  // sub-rândul: „S2 · E5 · 23 min rămase” la „Continuă”, altfel anul + tipul
+  const kind = title.type === "series" ? "· serial" : title.type === "movie" ? "· film" : "";
+  const sub = opts.sub || (title.year ? `${title.year} ${kind}` : "");
+
   div.innerHTML = `
     <div class="card-poster">
       ${title.poster
-        ? `<img loading="lazy" src="${escUrl(title.poster)}">`
+        ? `<img loading="lazy" decoding="async" alt="" src="${escUrl(title.poster)}">`
         : `<div class="noimg">${esc(title.name)}</div>`}
       ${rating ? `<div class="card-rate ${Number(title.rating) < 5 ? "low" : ""}">${rating}</div>` : ""}
-      ${title.source ? `<div class="card-tag">${esc(title.source === "tmdb" ? "TMDB" : title.source)}</div>` : ""}
+      ${title.source && title.source !== "tmdb" ? `<div class="card-tag">${esc(title.source)}</div>` : ""}
       ${progress}
     </div>
     <div class="card-name">${esc(title.name)}</div>
-    ${title.year ? `<div class="card-sub">${esc(title.year)} ${title.type === "series" ? "· serial" : title.type === "movie" ? "· film" : ""}</div>` : ""}
+    ${sub ? `<div class="card-sub${opts.sub ? " accent" : ""}">${esc(sub)}</div>` : ""}
   `;
-  div.querySelector(".card-poster").addEventListener("click", () => openDetail(title));
-  div.querySelector(".card-name").addEventListener("click", () => openDetail(title));
+  makeActivatable(div, () => openDetail(title), title.name);
   return div;
 }
+
+/* „S2 · E5 · 23 min rămase” pentru un rând de istoric */
+function historyLabel(h) {
+  const ep = h.season ? `S${h.season} · E${h.episode} · ` : "";
+  const left = Math.max(0, (h.duration_seconds || 0) - (h.position_seconds || 0));
+  const mins = Math.round(left / 60);
+  return ep + (mins >= 60 ? `${Math.floor(mins / 60)} h ${mins % 60} min rămase` : `${Math.max(1, mins)} min rămase`);
+}
+// început (>30s) dar neterminat (>1 min rămas); un film văzut până la capăt dispare din „Continuă”
+const isUnfinished = (h) =>
+  h.position_seconds > 30 && (h.duration_seconds == null || h.duration_seconds - h.position_seconds > 60);
+const isContinuable = (h) => !!h.title && !!h.duration_seconds && isUnfinished(h);
 
 function rowEl(titleText, titles, opts = {}) {
   const row = document.createElement("div");
@@ -173,14 +205,12 @@ function rowEl(titleText, titles, opts = {}) {
   row.innerHTML = `<div class="row-title"><div>${esc(titleText)}</div></div>`;
   const scroll = document.createElement("div");
   scroll.className = "row-scroll";
-  titles.forEach((t, i) =>
+  titles.forEach((t, i) => {
+    const h = opts.histories && opts.histories[i];
     scroll.appendChild(
-      cardEl(t, {
-        progress: opts.histories && opts.histories[i] ? opts.histories[i].position_seconds : 0,
-        duration: opts.histories && opts.histories[i] ? opts.histories[i].duration_seconds : 0,
-      })
-    )
-  );
+      cardEl(t, h ? { progress: h.position_seconds, duration: h.duration_seconds, sub: historyLabel(h) } : {})
+    );
+  });
   if (opts.onMore) {
     const b = document.createElement("button");
     b.className = "row-more";
@@ -198,7 +228,13 @@ function parseRoute() {
   const seg = h.split("/").filter(Boolean);
   if (!seg.length) return { view: "home" };
   if (seg[0] === "browse") return { view: "browse", category: seg[1] === "series" ? "series" : "films" };
-  if (seg[0] === "search") return { view: "searchpage", q: decodeURIComponent(seg.slice(1).join("/")) };
+  if (seg[0] === "search") {
+    let q = seg.slice(1).join("/");
+    try {
+      q = decodeURIComponent(q);
+    } catch (_) {} // hash scris de mână cu „%” invalid — folosim textul brut
+    return { view: "searchpage", q };
+  }
   if (seg[0] === "watchlist") return { view: "watchlist" };
   if (seg[0] === "continue") return { view: "continue" };
   if (seg[0] === "downloads") return { view: "downloads" };
@@ -227,7 +263,12 @@ function setNavActive(view) {
   );
 }
 
+/* fiecare navigare primește un număr; un loader care termină după ce ai plecat
+   în altă pagină vede că numărul s-a schimbat și nu mai desenează nimic */
+let viewSeq = 0;
+
 async function render() {
+  viewSeq++;
   const r = parseRoute();
   setNavActive(r.view === "browse" || r.view === "searchpage" ? "home" : r.view);
   closeSearch();
@@ -245,7 +286,8 @@ async function render() {
 
 /* ================= HOME ================= */
 async function loadHome() {
-  content.innerHTML = `<div class="hero-skel skel" style="min-height:380px"></div><div class="rows">${skelRows(2)}</div>`;
+  const seq = viewSeq;
+  content.innerHTML = `<div class="hero-skel skel"></div><div class="rows">${skelRows(2)}</div>`;
   let films, series;
   try {
     [films, series, state.history] = await Promise.all([
@@ -254,9 +296,11 @@ async function loadHome() {
       api("/api/history").catch(() => state.history),
     ]);
   } catch (err) {
+    if (seq !== viewSeq) return;
     content.innerHTML = `<div class="status error">Eroare: ${esc(err.message)}<br><button class="btn ghost" style="margin-top:1rem" onclick="location.reload()">Reîncearcă</button></div>`;
     return;
   }
+  if (seq !== viewSeq) return;
 
   content.innerHTML = "";
 
@@ -265,9 +309,9 @@ async function loadHome() {
     const hero = document.createElement("section");
     hero.className = "hero";
     hero.innerHTML = `
-      <div class="hero-backdrop" style="background-image:url('${escUrl(heroTitle.poster)}')"></div>
+      <div class="hero-backdrop" style="background-image:${cssUrl(heroTitle.poster)}"></div>
       <div class="hero-inner">
-        <div class="hero-poster">${heroTitle.poster ? `<img src="${escUrl(heroTitle.poster)}">` : ""}</div>
+        <div class="hero-poster">${heroTitle.poster ? `<img alt="" fetchpriority="high" src="${escUrl(heroTitle.poster)}">` : ""}</div>
         <div class="hero-info">
           <div class="hero-title">${esc(heroTitle.name)}</div>
           <div class="hero-meta">
@@ -276,7 +320,7 @@ async function loadHome() {
             <span>film</span>
           </div>
           <div class="hero-actions">
-            <button class="btn" id="hero-play">${svg(I.play)} Detalii</button>
+            <button class="btn" id="hero-play">${svg(I.play)} Vizionează</button>
             <button class="btn ghost" id="hero-wl">${svg(I.star, 16)} ${state.watchlist.has(heroTitle.id) ? "În watchlist" : "Watchlist"}</button>
           </div>
         </div>
@@ -284,9 +328,14 @@ async function loadHome() {
     `;
     content.appendChild(hero);
     hero.querySelector("#hero-play").addEventListener("click", () => openDetail(heroTitle));
+    hero.querySelector(".hero-poster").addEventListener("click", () => openDetail(heroTitle));
     hero.querySelector("#hero-wl").addEventListener("click", async () => {
-      const on = await toggleWatchlist(heroTitle);
-      hero.querySelector("#hero-wl").innerHTML = `${svg(I.star, 16)} ${on ? "În watchlist" : "Watchlist"}`;
+      try {
+        const on = await toggleWatchlist(heroTitle);
+        hero.querySelector("#hero-wl").innerHTML = `${svg(I.star, 16)} ${on ? "În watchlist" : "Watchlist"}`;
+      } catch (err) {
+        toast(err.message, false);
+      }
     });
   }
 
@@ -294,9 +343,7 @@ async function loadHome() {
   rows.className = "rows";
   content.appendChild(rows);
 
-  const continuable = state.history.filter(
-    (h) => h.position_seconds > 30 && h.title && (h.duration_seconds || 0) > h.position_seconds
-  );
+  const continuable = state.history.filter(isContinuable);
   if (continuable.length) {
     rows.appendChild(
       rowEl("Continuă vizionarea", continuable.map((h) => h.title), { histories: continuable })
@@ -307,10 +354,13 @@ async function loadHome() {
 }
 
 /* ================= BROWSE (cu filtre) ================= */
-const browseState = { category: "films", page: 1, genre: "", year: "", sort: "popularity", items: [], done: false, loading: false };
+// seq: crește la fiecare schimbare de filtru/categorie; răspunsurile vechi sunt ignorate
+const browseState = { category: "films", page: 1, genre: "", year: "", sort: "popularity", items: [], done: false, loading: false, seq: 0 };
 
 async function loadBrowse(category) {
-  Object.assign(browseState, { category, page: 1, genre: "", year: "", sort: "popularity", items: [], done: false });
+  const seq = viewSeq;
+  Object.assign(browseState, { category, page: 1, genre: "", year: "", sort: "popularity", items: [], done: false, loading: false });
+  browseState.seq++;
   content.innerHTML = `
     <div class="grid-wrap">
       <div class="view-title">${category === "series" ? "Seriale" : "Filme"}</div>
@@ -337,8 +387,25 @@ async function loadBrowse(category) {
     yearSel.appendChild(o);
   }
 
+  // filtrele se pot folosi imediat; genurile se completează când sosesc
+  const apply = () => {
+    browseState.genre = $("#f-genre").value;
+    browseState.year = $("#f-year").value;
+    browseState.sort = $("#f-sort").value;
+    browseState.page = 1;
+    browseState.items = [];
+    browseState.done = false;
+    browseState.loading = false; // cererea anterioară, încă în zbor, devine învechită
+    browseState.seq++;
+    fetchBrowsePage();
+  };
+  ["#f-genre", "#f-year", "#f-sort"].forEach((id) => $(id).addEventListener("change", apply));
+  $("#load-more").addEventListener("click", fetchBrowsePage);
+  fetchBrowsePage();
+
   try {
     const genres = await api(`/api/genres?category=${category}`);
+    if (seq !== viewSeq) return;
     const gSel = $("#f-genre");
     genres.forEach((g) => {
       const o = document.createElement("option");
@@ -347,24 +414,12 @@ async function loadBrowse(category) {
       gSel.appendChild(o);
     });
   } catch (_) {}
-
-  const apply = () => {
-    browseState.genre = $("#f-genre").value;
-    browseState.year = $("#f-year").value;
-    browseState.sort = $("#f-sort").value;
-    browseState.page = 1;
-    browseState.items = [];
-    browseState.done = false;
-    $("#browse-grid").innerHTML = "";
-    fetchBrowsePage();
-  };
-  ["#f-genre", "#f-year", "#f-sort"].forEach((id) => $(id).addEventListener("change", apply));
-  $("#load-more").addEventListener("click", fetchBrowsePage);
-  fetchBrowsePage();
 }
 
 async function fetchBrowsePage() {
   if (browseState.loading || browseState.done) return;
+  const seq = browseState.seq;
+  const stale = () => seq !== browseState.seq || !$("#browse-grid");
   browseState.loading = true;
   const btn = $("#load-more");
   if (btn) btn.disabled = true;
@@ -379,6 +434,7 @@ async function fetchBrowsePage() {
     if (browseState.genre) p.set("genre", browseState.genre);
     if (browseState.year) p.set("year", browseState.year);
     const data = await api(`/api/browse?${p}`);
+    if (stale()) return;
     const res = data.results || [];
     if (first) $("#browse-grid").innerHTML = "";
     const grid = $("#browse-grid");
@@ -387,18 +443,25 @@ async function fetchBrowsePage() {
       grid.appendChild(cardEl(t));
     });
     browseState.done = res.length < 20;
+    browseState.page++; // doar la succes: o eroare nu mai sare peste o pagină
     if (!browseState.items.length && first)
       grid.innerHTML = `<div class="status">Nimic pentru filtrele alese.</div>`;
   } catch (err) {
-    $("#browse-grid").innerHTML = `<div class="status error">Eroare: ${esc(err.message)}</div>`;
-    browseState.done = true;
-  } finally {
-    browseState.loading = false;
-    if (btn) {
-      btn.disabled = false;
-      btn.classList.toggle("hidden", browseState.done);
+    if (stale()) return;
+    if (first) {
+      $("#browse-grid").innerHTML = `<div class="status error">Eroare: ${esc(err.message)}</div>`;
+      browseState.done = true;
+    } else {
+      toast(`Nu s-a încărcat pagina următoare: ${err.message}`, false); // butonul rămâne pentru reîncercare
     }
-    browseState.page++;
+  } finally {
+    if (seq === browseState.seq) {
+      browseState.loading = false;
+      if (btn) {
+        btn.disabled = false;
+        btn.classList.toggle("hidden", browseState.done);
+      }
+    }
   }
 }
 
@@ -406,14 +469,16 @@ async function fetchBrowsePage() {
 const WL_LABELS = { to_watch: "De văzut", watching: "În curs", watched: "Văzut" };
 
 async function loadWatchlist() {
+  const seq = viewSeq;
   content.innerHTML = `<div class="grid-wrap"><div class="view-title">Watchlist</div>${skelGrid(6)}</div>`;
   let items;
   try {
     items = await api("/api/watchlist");
   } catch (err) {
-    content.innerHTML = `<div class="status error">Eroare: ${esc(err.message)}</div>`;
+    if (seq === viewSeq) content.innerHTML = `<div class="status error">Eroare: ${esc(err.message)}</div>`;
     return;
   }
+  if (seq !== viewSeq) return;
   state.watchlist = new Set(items.map((i) => i.title.id));
   items.forEach((i) => (state.wlStatus[i.title.id] = i.status));
 
@@ -459,18 +524,18 @@ async function loadWatchlist() {
 
 /* ================= CONTINUĂ ================= */
 async function loadContinue() {
+  const seq = viewSeq;
   content.innerHTML = `<div class="grid-wrap"><div class="view-title">Continuă vizionarea</div>${skelGrid(6)}</div>`;
   try {
     state.history = await api("/api/history");
   } catch (err) {
-    content.innerHTML = `<div class="status error">Eroare: ${esc(err.message)}</div>`;
+    if (seq === viewSeq) content.innerHTML = `<div class="status error">Eroare: ${esc(err.message)}</div>`;
     return;
   }
+  if (seq !== viewSeq) return;
   const wrap = document.createElement("div");
   wrap.className = "grid-wrap";
-  const live = state.history.filter(
-    (h) => h.position_seconds > 30 && h.title && (h.duration_seconds || 0) > h.position_seconds
-  );
+  const live = state.history.filter(isContinuable);
   wrap.innerHTML = `<div class="view-title">Continuă vizionarea (${live.length})</div>`;
   if (!live.length) {
     wrap.innerHTML += `<div class="status">Niciun titlu în curs de vizionare.</div>`;
@@ -478,13 +543,9 @@ async function loadContinue() {
     const grid = document.createElement("div");
     grid.className = "grid";
     live.forEach((h) => {
-      const c = cardEl(h.title, { progress: h.position_seconds, duration: h.duration_seconds });
-      const sub = document.createElement("div");
-      sub.className = "card-sub";
-      sub.textContent =
-        (h.season ? `S${h.season}E${h.episode} · ` : "") + fmtTime(h.position_seconds) + " / " + fmtTime(h.duration_seconds);
-      c.appendChild(sub);
-      grid.appendChild(c);
+      grid.appendChild(
+        cardEl(h.title, { progress: h.position_seconds, duration: h.duration_seconds, sub: historyLabel(h) })
+      );
     });
     wrap.appendChild(grid);
   }
@@ -494,14 +555,16 @@ async function loadContinue() {
 
 /* ================= DESCĂRCĂRI (cache TorrServer) ================= */
 async function loadDownloads() {
+  const seq = viewSeq;
   content.innerHTML = `<div class="grid-wrap"><div class="view-title">Descărcări (cache TorrServer)</div><div class="status">Se încarcă...</div></div>`;
   let items;
   try {
     items = await api("/api/downloads");
   } catch (err) {
-    content.innerHTML = `<div class="status error">${esc(err.message)}</div>`;
+    if (seq === viewSeq) content.innerHTML = `<div class="status error">${esc(err.message)}</div>`;
     return;
   }
+  if (seq !== viewSeq) return;
   const wrap = document.createElement("div");
   wrap.className = "grid-wrap";
   wrap.innerHTML = `<div class="view-title">Descărcări (cache TorrServer) — ${items.length}</div>`;
@@ -539,6 +602,7 @@ async function loadDownloads() {
   clear.style.margin = "1rem 0";
   clear.textContent = "Golește tot cache-ul";
   clear.addEventListener("click", async () => {
+    if (!confirm(`Ștergi toate cele ${items.length} torrente din cache-ul TorrServer?`)) return;
     clear.disabled = true;
     try {
       for (const d of items) {
@@ -573,11 +637,16 @@ $("#search-input").addEventListener(
   "input",
   debounce(async (e) => {
     const q = e.target.value.trim();
-    if (q.length < 2) return;
     const box = $("#search-results");
+    const current = () => $("#search-input").value.trim() === q; // răspuns pentru textul actual?
+    if (q.length < 2) {
+      box.innerHTML = "";
+      return;
+    }
     box.innerHTML = `<div class="status">Se caută...</div>`;
     try {
       const { results, errors } = await api(`/api/search?q=${encodeURIComponent(q)}`);
+      if (!current()) return; // „matri” sosit după „matrix” — ignorat
       box.innerHTML = "";
       if (!results.length) {
         box.innerHTML = `<div class="status">${errors.length ? esc(errors[0]) : "Niciun rezultat."}</div>`;
@@ -585,7 +654,7 @@ $("#search-input").addEventListener(
       }
       results.forEach((t) => box.appendChild(cardEl(t)));
     } catch (err) {
-      box.innerHTML = `<div class="status error">Eroare: ${esc(err.message)}</div>`;
+      if (current()) box.innerHTML = `<div class="status error">Eroare: ${esc(err.message)}</div>`;
     }
   }, 350)
 );
@@ -599,9 +668,11 @@ $("#search-input").addEventListener("keydown", (e) => {
 });
 
 async function loadSearchPage(q) {
+  const seq = viewSeq;
   content.innerHTML = `<div class="grid-wrap"><div class="view-title">Rezultate pentru „${esc(q)}"</div>${skelGrid(8)}</div>`;
   try {
     const { results, errors } = await api(`/api/search?q=${encodeURIComponent(q)}`);
+    if (seq !== viewSeq) return;
     content.innerHTML = "";
     const wrap = document.createElement("div");
     wrap.className = "grid-wrap";
@@ -616,7 +687,7 @@ async function loadSearchPage(q) {
     }
     content.appendChild(wrap);
   } catch (err) {
-    content.innerHTML = `<div class="status error">Eroare: ${esc(err.message)}</div>`;
+    if (seq === viewSeq) content.innerHTML = `<div class="status error">Eroare: ${esc(err.message)}</div>`;
   }
 }
 
@@ -658,28 +729,70 @@ function updateModalFade() {
 modal.addEventListener("scroll", updateModalFade, { passive: true });
 window.addEventListener("resize", updateModalFade);
 
+/* ---------- ciclul de viață al modalului și al player-ului ----------
+   detailSeq: crește la fiecare deschidere/închidere — un /api/title întârziat nu mai
+              redeschide nimic după Escape sau după ce ai ales alt titlu.
+   playSeq:   crește la fiecare pornire de redare/închidere — clicurile rapide pe
+              versiuni/episoade nu se mai suprascriu între ele.
+   playerCleanup: oprește player-ul curent (progres final, cronometre, stream). */
+let detailSeq = 0;
+let playSeq = 0;
+let playerCleanup = null;
+let lastFocus = null;
+
+function stopPlayer() {
+  playSeq++;
+  if (playerCleanup) {
+    const fn = playerCleanup;
+    playerCleanup = null;
+    fn();
+  }
+}
+/* pornește o redare nouă: oprește ce rula și întoarce tokenul ei */
+function beginPlay() {
+  stopPlayer();
+  return playSeq;
+}
+
 function closeDetail() {
+  const wasOpen = !modal.classList.contains("hidden");
+  detailSeq++;
+  stopPlayer();
   modal.classList.add("hidden");
   modalBody.innerHTML = "";
   document.removeEventListener("keydown", playerKeysHandler);
+  if (wasOpen && lastFocus && document.contains(lastFocus)) lastFocus.focus();
+  lastFocus = null;
 }
 window.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
+    if (document.fullscreenElement) return; // Escape iese întâi din fullscreen
     closeDetail();
     closeSearch();
   }
 });
+// telefon: aplicația trimisă în fundal / tab închis -> salvăm poziția
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden" && currentProgressSave) currentProgressSave();
+});
+window.addEventListener("pagehide", () => currentProgressSave && currentProgressSave());
 
 async function openDetail(title, opts = {}) {
+  if (modal.classList.contains("hidden")) lastFocus = document.activeElement;
+  else stopPlayer(); // titlu similar deschis din modal: oprim player-ul curent
+  const ds = ++detailSeq;
   modal.classList.remove("hidden");
+  modal.scrollTop = 0;
   modalBody.innerHTML = `<div class="status">Se încarcă...</div>`;
+  $("#modal-close").focus({ preventScroll: true });
   let detail;
   try {
     detail = await api(`/api/title/${title.id}?_=${Date.now()}`);
   } catch (err) {
-    modalBody.innerHTML = `<div class="status error">Eroare: ${esc(err.message)}</div>`;
+    if (ds === detailSeq) modalBody.innerHTML = `<div class="status error">Eroare: ${esc(err.message)}</div>`;
     return;
   }
+  if (ds !== detailSeq) return; // închis sau înlocuit între timp
   renderModal(detail, opts);
 }
 
@@ -688,20 +801,21 @@ function chipsHtml(t) {
     ${t.year ? `<span>${esc(t.year)}</span>` : ""}
     ${t.type === "series" ? "<span>serial</span>" : t.type === "movie" ? "<span>film</span>" : ""}
     ${t.rating ? `<span>★ ${Number(t.rating).toFixed(1)}</span>` : ""}
-    <span>TMDB</span>
   `;
 }
 
 function renderModal(t, opts = {}) {
+  stopPlayer();
   epsBySeason = {}; // cache episoade per titlu deschis
+  const ds = detailSeq;
   const isSeries = t.type === "series";
   const inWl = state.watchlist.has(t.id);
 
   modalBody.innerHTML = `
     <div class="modal-head">
-      <div class="modal-backdrop" style="background-image:url('${escUrl(t.poster)}')"></div>
+      <div class="modal-backdrop" style="background-image:${cssUrl(t.poster)}"></div>
       <div class="modal-head-inner">
-        <div class="modal-poster">${t.poster ? `<img src="${escUrl(t.poster)}">` : ""}</div>
+        <div class="modal-poster">${t.poster ? `<img alt="" src="${escUrl(t.poster)}">` : ""}</div>
         <div class="modal-info">
           <h2>${esc(t.name)}</h2>
           ${t.name_original ? `<div class="modal-original">${esc(t.name_original)}</div>` : ""}
@@ -716,11 +830,7 @@ function renderModal(t, opts = {}) {
       ${isSeries ? `<button class="btn" id="m-eps">${svg(I.play)} Episoade</button>` : ""}
       <button class="btn ghost" id="m-wl">${svg(I.star, 16)} ${inWl ? "În watchlist" : "Watchlist"}</button>
       ${t.trailer ? `<button class="btn ghost" id="m-trailer">${svg(I.yt, 16)} Trailer</button>` : ""}
-      ${inWl ? `<span class="seg" id="m-seg">
-        ${Object.entries(WL_LABELS)
-          .map(([v, l]) => `<button data-v="${v}" class="${state.wlStatus[t.id] === v ? "on" : ""}">${l}</button>`)
-          .join("")}
-      </span>` : ""}
+      <span id="m-seg-wrap"></span>
     </div>
 
     <div class="tabs" id="m-tabs">
@@ -742,17 +852,18 @@ function renderModal(t, opts = {}) {
   const descEl = modalBody.querySelector("#desc");
   if (descEl) descEl.addEventListener("click", () => descEl.classList.toggle("expanded"));
 
-  modalBody.querySelector("#m-wl").addEventListener("click", async () => {
-    const on = await toggleWatchlist(t);
-    modalBody.querySelector("#m-wl").innerHTML = `${svg(I.star, 16)} ${on ? "În watchlist" : "Watchlist"}`;
-    renderModal(t, { keepTab: currentTab() });
-  });
-  const trailerBtn = modalBody.querySelector("#m-trailer");
-  if (trailerBtn) {
-    trailerBtn.addEventListener("click", () => playTrailer(t));
-  }
-  const seg = modalBody.querySelector("#m-seg");
-  if (seg) {
+  // watchlist: actualizăm doar butonul și segmentul — player-ul rămâne neatins
+  const renderSeg = () => {
+    const wrap = modalBody.querySelector("#m-seg-wrap");
+    if (!wrap) return;
+    if (!state.watchlist.has(t.id)) {
+      wrap.innerHTML = "";
+      return;
+    }
+    wrap.innerHTML = `<span class="seg" id="m-seg">${Object.entries(WL_LABELS)
+      .map(([v, l]) => `<button data-v="${v}" class="${state.wlStatus[t.id] === v ? "on" : ""}">${l}</button>`)
+      .join("")}</span>`;
+    const seg = wrap.querySelector("#m-seg");
     seg.querySelectorAll("button").forEach((b) =>
       b.addEventListener("click", async () => {
         try {
@@ -768,6 +879,24 @@ function renderModal(t, opts = {}) {
         }
       })
     );
+  };
+  renderSeg();
+  modalBody.querySelector("#m-wl").addEventListener("click", async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    try {
+      const on = await toggleWatchlist(t);
+      btn.innerHTML = `${svg(I.star, 16)} ${on ? "În watchlist" : "Watchlist"}`;
+      renderSeg();
+    } catch (err) {
+      toast(err.message, false);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+  const trailerBtn = modalBody.querySelector("#m-trailer");
+  if (trailerBtn) {
+    trailerBtn.addEventListener("click", () => playTrailer(t));
   }
 
   // taburi
@@ -784,10 +913,6 @@ function renderModal(t, opts = {}) {
       if (p) p.classList.toggle("hidden", n !== name);
     });
   }
-  function currentTab() {
-    const on = modalBody.querySelector("#m-tabs button.on");
-    return on ? on.dataset.tab : "play";
-  }
   if (opts.keepTab) switchTab(opts.keepTab);
   setTimeout(updateModalFade, 250);
 
@@ -803,7 +928,9 @@ function renderModal(t, opts = {}) {
   (async () => {
     try {
       const hist = await api(`/api/title/${t.id}/history`);
-      const last = hist.find((h) => h.position_seconds > 30);
+      if (ds !== detailSeq) return;
+      // ultima poziție neterminată (un film/episod văzut până la capăt nu mai e „de continuat”)
+      const last = hist.find(isUnfinished);
       if (!last) return;
       const chip = modalBody.querySelector("#resume-chip");
       if (!chip) return;
@@ -839,7 +966,7 @@ function playTrailer(t) {
   // salvăm poziția filmului ca să reluăm de unde a rămas
   const video = modalBody.querySelector("#video");
   const resumeAt = video && video.currentTime > 15 ? video.currentTime : null;
-  if (video) video.pause();
+  stopPlayer(); // salvează progresul, oprește stream-ul și orice redare încă în pornire
 
   const tabPlay = modalBody.querySelector("#m-tabs button[data-tab='play']");
   if (tabPlay) tabPlay.click();
@@ -899,6 +1026,7 @@ function renderInfoTab(t) {
 let epsBySeason = {}; // season -> [episoade] (pentru „Urmează")
 
 async function renderEpisodesTab(t) {
+  const ds = detailSeq;
   const panel = modalBody.querySelector("#tab-eps");
   if (!panel) return;
   panel.innerHTML = `<div class="status">Se încarcă sezoanele...</div>`;
@@ -906,6 +1034,7 @@ async function renderEpisodesTab(t) {
   try {
     hist = await api(`/api/title/${t.id}/history`);
   } catch (_) {}
+  if (ds !== detailSeq) return;
   const byEp = new Map(hist.map((h) => [`${h.season}x${h.episode}`, h]));
 
   // sezoanele: din TMDB (t.seasons) sau din episoadele deja în DB (fallback)
@@ -915,7 +1044,9 @@ async function renderEpisodesTab(t) {
     panel.innerHTML = `<div class="status">Niciun sezon găsit.</div>`;
     return;
   }
-  const initialSeason = seasons.includes(1) ? 1 : seasons[seasons.length - 1];
+  // se deschide sezonul ultimului episod văzut (istoricul vine sortat descrescător după dată)
+  const lastSeen = hist.find((h) => h.season != null && seasons.includes(h.season));
+  const initialSeason = lastSeen ? lastSeen.season : seasons.includes(1) ? 1 : seasons[seasons.length - 1];
   panel.innerHTML = `
     <div class="season-chips" id="season-chips">
       ${seasons.map((s) => `<button data-s="${s}" class="${s === initialSeason ? "on" : ""}">Sezonul ${s}</button>`).join("")}
@@ -925,15 +1056,21 @@ async function renderEpisodesTab(t) {
   const grid = panel.querySelector("#eps-grid");
   const CHUNK = 24;
 
+  let wantedSeason = initialSeason;
   async function loadSeason(s) {
+    wantedSeason = s;
     if (!epsBySeason[s]) {
       grid.innerHTML = `<div class="status">Se încarcă sezonul ${s}...</div>`;
+      let eps;
       try {
-        epsBySeason[s] = await api(`/api/title/${t.id}/episodes?season=${s}`);
+        eps = await api(`/api/title/${t.id}/episodes?season=${s}`);
       } catch (_) {
-        epsBySeason[s] = (t.episodes || []).filter((e) => e.season === s); // fallback din DB
+        eps = (t.episodes || []).filter((e) => e.season === s); // fallback din DB
       }
+      if (ds !== detailSeq) return; // alt titlu deschis între timp — nu-i stricăm cache-ul
+      epsBySeason[s] = eps;
     }
+    if (s !== wantedSeason) return; // ai ales între timp alt sezon
     renderSeason(epsBySeason[s] || [], s);
   }
 
@@ -952,12 +1089,12 @@ async function renderEpisodesTab(t) {
         el.className = "ep-card";
         el.innerHTML = `
           <div class="ep-thumb">
-            ${e.still ? `<img loading="lazy" src="${escUrl(e.still)}">` : `<div class="noimg">S${e.season}E${e.episode}</div>`}
+            ${e.still ? `<img loading="lazy" decoding="async" alt="" src="${escUrl(e.still)}">` : `<div class="noimg">S${e.season}E${e.episode}</div>`}
             <div class="ep-play">${svg(I.play, 26)}</div>
             ${watched}
           </div>
           <div class="ep-name">${e.episode}. ${esc(e.name || "Episodul " + e.episode)}</div>`;
-        el.addEventListener("click", () => playEpisode(t, e.season, e.episode));
+        makeActivatable(el, () => playEpisode(t, e.season, e.episode), `Redă episodul ${e.episode}`);
         grid.appendChild(el);
       });
       let moreWrap = panel.querySelector("#eps-more-wrap");
@@ -1019,6 +1156,7 @@ async function startStream(source, { fileIndex = 0, season = null, episode = nul
 }
 
 async function autoPlayBest(t, seekTo = null) {
+  const ps = beginPlay();
   lastDetailTitle = t;
   const playerBox = modalBody.querySelector("#player");
   if (!playerBox) return;
@@ -1029,36 +1167,85 @@ async function autoPlayBest(t, seekTo = null) {
   try {
     results = await fetchTorrents(t, q, alt);
   } catch (err) {
-    playerBox.innerHTML = `<div class="status error">${esc(err.message)}</div>`;
+    if (ps === playSeq) playerBox.innerHTML = `<div class="status error">${esc(err.message)}</div>`;
     return;
   }
+  if (ps !== playSeq) return;
   lastTorrentResults = results;
   buildTorrentsList(t, results);
-  await playTorrent(t, results[0], { seekTo });
-  pillShow(results[0]);
+  await playTorrent(t, results[0], { seekTo, ps });
+}
+
+/* calitatea ca etichetă scurtă și clasă de culoare */
+function qualityOf(r) {
+  const q = r.quality || "";
+  return { label: q || "—", cls: q === "4K" ? "q-4k" : q === "1080p" ? "q-fhd" : q === "720p" ? "q-hd" : "q-low" };
 }
 
 function buildTorrentsList(t, results) {
   const box = modalBody.querySelector("#torrents");
   if (!box) return;
+
+  // filtre rapide: doar calitățile care chiar există în rezultate + dublaj RU
+  const counts = {};
+  results.forEach((r) => (counts[r.quality || ""] = (counts[r.quality || ""] || 0) + 1));
+  const ruCount = results.filter((r) => r.dub).length;
+  const chips = [["all", `Toate ${results.length}`]];
+  ["4K", "1080p", "720p"].forEach((q) => counts[q] && chips.push([q, `${q} ${counts[q]}`]));
+  if (ruCount && ruCount < results.length) chips.push(["ru", `Dublaj RU ${ruCount}`]);
+
   box.innerHTML = `<div class="sub-title">Versiuni (${results.length})</div>
-    <div class="torrent-list">${results
-      .map(
-        (r, i) => `
-      <div class="torrent-row" data-i="${i}">
-        <div class="t-name">${esc(r.name)}
-          <div class="t-meta">${r.dub ? `<b class="ru-badge">RU</b> ` : ""}${esc(r.size || "?")}${r.seeds ? " · 🌱" + r.seeds : ""}${r.quality ? " · " + esc(r.quality) : ""} · [${esc(r.indexer || r.source || "?")}]</div>
+    ${chips.length > 2 ? `<div class="q-filter" id="q-filter">${chips
+      .map(([v, l], i) => `<button data-f="${v}" class="${i === 0 ? "on" : ""}">${esc(l)}</button>`)
+      .join("")}</div>` : ""}
+    <div class="torrent-list" id="torrent-list"></div>`;
+
+  const list = box.querySelector("#torrent-list");
+  results.forEach((r) => {
+    const q = qualityOf(r);
+    const row = document.createElement("div");
+    row.className = "torrent-row";
+    row._src = r;
+    row.dataset.q = r.quality || "";
+    row.dataset.ru = r.dub ? "1" : "";
+    row.innerHTML = `
+      <div class="t-q ${q.cls}">${esc(q.label)}</div>
+      <div class="t-name">
+        <div class="t-title" title="${esc(r.name)}">${esc(r.name)}</div>
+        <div class="t-meta">
+          ${r.dub ? `<b class="ru-badge">RU</b>` : ""}
+          <span>${esc(r.size || "?")}</span>
+          ${r.seeds ? `<span class="t-seeds">▲ ${Number(r.seeds)}</span>` : ""}
+          <span class="t-src">${esc(r.indexer || r.source || "?")}</span>
         </div>
-        <button class="btn-play">${svg(I.play, 14)}</button>
-      </div>`
-      )
-      .join("")}</div>`;
-  box.querySelectorAll(".torrent-row").forEach((row) =>
-    row.addEventListener("click", () => {
-      playTorrent(t, results[+row.dataset.i], {});
-      pillShow(results[+row.dataset.i]);
-    })
+      </div>
+      <span class="btn-play" aria-hidden="true">${svg(I.play, 14)}</span>`;
+    makeActivatable(row, () => playTorrent(t, r, {}), `Redă: ${r.name}`);
+    list.appendChild(row);
+  });
+
+  const filter = box.querySelector("#q-filter");
+  if (filter) {
+    filter.querySelectorAll("button").forEach((b) =>
+      b.addEventListener("click", () => {
+        filter.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
+        const f = b.dataset.f;
+        list.querySelectorAll(".torrent-row").forEach((row) => {
+          const show = f === "all" || (f === "ru" ? row.dataset.ru === "1" : row.dataset.q === f);
+          row.classList.toggle("hidden", !show);
+        });
+        setTimeout(updateModalFade, 50);
+      })
+    );
+  }
+}
+
+/* versiunea care rulează: evidențiată în listă + rezumat deasupra listei */
+function markPlaying(source) {
+  modalBody.querySelectorAll("#torrent-list .torrent-row").forEach((row) =>
+    row.classList.toggle("playing", row._src === source)
   );
+  pillShow(source);
 }
 
 function pillShow(source) {
@@ -1067,16 +1254,17 @@ function pillShow(source) {
   pill.classList.remove("hidden");
   const short = (source.name || "").replace(/\s+/g, " ").slice(0, 70);
   pill.innerHTML = `
-    <span class="pill-tag">AUTO</span>
+    <span class="pill-tag">ACUM</span>
     ${esc(short)}${source.name && source.name.length > 70 ? "…" : ""}
     <span class="dot">·</span> [${esc(source.indexer || source.source || "?")}]
     ${source.dub ? `<span class="dot">·</span> <b class="ru-badge">RU</b>` : ""}
     ${source.quality ? `<span class="dot">·</span> ${esc(source.quality)}` : ""}
-    ${source.seeds ? `<span class="dot">·</span> 🌱${source.seeds}` : ""}`;
+    ${source.seeds ? `<span class="dot">·</span> ▲ ${Number(source.seeds)}` : ""}`;
 }
 
 /* caută release-uri pentru un episod și rulează pachetul potrivit sezonului */
 async function playEpisode(t, season, episode, seekTo = null) {
+  const ps = beginPlay();
   const playerBox = modalBody.querySelector("#player");
   if (!playerBox) return;
   const tabs = modalBody.querySelector("#m-tabs button[data-tab='play']");
@@ -1094,11 +1282,14 @@ async function playEpisode(t, season, episode, seekTo = null) {
   for (const q of queries) {
     try {
       const r = await fetchTorrents(t, q, alt, { noYear: true });
+      if (ps !== playSeq) return; // alt episod/versiune ales între timp
       if (r && r.length) {
         results = r;
         break;
       }
-    } catch (_) {}
+    } catch (_) {
+      if (ps !== playSeq) return;
+    }
   }
   if (!results) {
     playerBox.innerHTML = `<div class="status error">Niciun release găsit pentru S${season}E${episode}. Încearcă din „Versiuni”.</div>`;
@@ -1115,34 +1306,41 @@ async function playEpisode(t, season, episode, seekTo = null) {
   for (const c of candidates) {
     try {
       const d = await startStream(c, { season, episode });
+      if (ps !== playSeq) return;
       // fallback = pachetul cu cele mai multe fișiere (probabil conține episodul)
       if (!data || d.files.length > data.files.length) { data = d; chosen = c; }
       if (d.matched !== false) { data = d; chosen = c; break; }
-    } catch (_) {}
+    } catch (_) {
+      if (ps !== playSeq) return;
+    }
   }
   if (!data) {
     playerBox.innerHTML = `<div class="status error">Episodul S${season}E${episode} nu a putut fi pornit. Încearcă din „Versiuni”.</div>`;
     return;
   }
-  pillShow(chosen);
+  markPlaying(chosen);
   renderPlayer(t, chosen, data, { season, episode, seekTo });
   if (data.matched === false) {
     toast(`S${season}E${episode} nu a fost identificat exact în pachet — alege fișierul din lista de sub player`, false);
   }
 }
 
-async function playTorrent(t, source, { season = null, episode = null, seekTo = null, fileIndex = 0 } = {}) {
+async function playTorrent(t, source, { season = null, episode = null, seekTo = null, fileIndex = 0, ps = null } = {}) {
+  if (ps == null) ps = beginPlay(); // apel direct (clic pe versiune / fișier)
   const playerBox = modalBody.querySelector("#player");
   if (!playerBox) return;
   playerBox.innerHTML = `<div class="status" style="padding:1rem">Conectez TorrServer...</div>`;
+  markPlaying(source);
 
   let data;
   try {
     data = await startStream(source, { fileIndex, season, episode });
   } catch (err) {
-    playerBox.innerHTML = `<div class="status error">${esc(err.message)}</div>`;
+    if (ps === playSeq)
+      playerBox.innerHTML = `<div class="status error">${esc(err.message)}<br><small>Alege altă versiune din lista de mai jos.</small></div>`;
     return;
   }
+  if (ps !== playSeq) return; // între timp ai ales altă versiune sau ai închis
 
   renderPlayer(t, source, data, { season, episode, seekTo, fileIndex });
 }
@@ -1150,10 +1348,12 @@ async function playTorrent(t, source, { season = null, episode = null, seekTo = 
 function renderPlayer(t, source, data, { season = null, episode = null, seekTo = null, fileIndex = null } = {}) {
   const playerBox = modalBody.querySelector("#player");
   if (!playerBox) return;
+  const ctx = { alive: true }; // devine false la cleanup: opresc cronometre/poll-uri ale acestui player
   playerBox.innerHTML = `
     <div class="video-wrap">
       <video id="video" controls autoplay playsinline></video>
       <div class="buffer hidden" id="buffer"></div>
+      <div class="video-error hidden" id="video-error" role="alert"></div>
       <div class="video-extra">
         <span class="cc-state" id="cc-state" title="Subtitrări rusești">CC…</span>
         <button class="btn small ghost" id="v-pip" title="Picture-in-picture">${svg(I.pip, 15)} PiP</button>
@@ -1204,7 +1404,8 @@ function renderPlayer(t, source, data, { season = null, episode = null, seekTo =
       if (ms) s = +ms[1];
     }
   }
-  trackProgress(video, t, s, e);
+  const progress = trackProgress(video, t, s, e, ctx);
+  let stopNext = () => {};
 
   // „Urmează": apare cu 30s înainte de final; la final, countdown 8s și auto-avans
   if (s != null && e != null) {
@@ -1218,9 +1419,10 @@ function renderPlayer(t, source, data, { season = null, episode = null, seekTo =
       countdownTimer = null;
       if (nextOv) { nextOv.remove(); nextOv = null; }
     };
+    stopNext = hideNext;
     const goNext = () => {
       hideNext();
-      playEpisode(t, s, e + 1);
+      if (ctx.alive) playEpisode(t, s, e + 1);
     };
     const showNext = (withCountdown) => {
       const nx = nextEp();
@@ -1257,25 +1459,48 @@ function renderPlayer(t, source, data, { season = null, episode = null, seekTo =
       if (remaining <= 30 && !nextOv && !countdownTimer) showNext(false);
       else if (remaining > 32 && nextOv && !countdownTimer) hideNext(); // seek înapoi
     });
+    // marcarea ca văzut o face trackProgress (pentru filme și episoade deopotrivă)
     video.addEventListener("ended", () => {
-      // marchează episodul ca văzut complet
-      api("/api/history", {
-        method: "POST",
-        body: JSON.stringify({
-          title_id: t.id, season: s, episode: e,
-          position_seconds: video.duration || 1, duration_seconds: video.duration || null,
-        }),
-      }).catch(() => {});
-      if (!cancelled && nextEp()) showNext(true);
+      if (ctx.alive && !cancelled && nextEp()) showNext(true);
     });
   }
 
   // subtitrări: 1) dublaj RU -> nu-i nevoie  2) .srt din arhivă  3) mux MKV cu progres  4) externă
-  attachSubtitles(video, t, data, s, e, source || {});
+  attachSubtitles(video, t, data, s, e, source || {}, ctx);
 
   if (seekTo) video.addEventListener("loadedmetadata", () => { video.currentTime = seekTo; }, { once: true });
 
+  // eroare de redare: mesaj clar în loc de ecran negru; un 401 (sesiune expirată) duce la login
+  video.addEventListener("error", () => {
+    if (!ctx.alive || !video.getAttribute("src")) return;
+    const code = video.error ? video.error.code : 0;
+    const why =
+      code === 4
+        ? "Browserul nu poate reda acest fișier (format video/audio nesuportat, des la HEVC sau AC3 pe telefon) sau torrentul nu răspunde."
+        : code === 2
+          ? "Conexiunea la stream s-a întrerupt."
+          : "Fișierul nu a putut fi redat.";
+    const box = playerBox.querySelector("#video-error");
+    if (box) {
+      box.innerHTML = `${esc(why)} Alege altă versiune din lista de mai jos.`;
+      box.classList.remove("hidden");
+    }
+    modalBody.querySelector("#buffer")?.classList.add("hidden");
+    api("/api/health").catch(() => {}); // dacă sesiunea a expirat, api() deschide login-ul
+  });
+
   enhanceVideo(video);
+
+  playerCleanup = () => {
+    progress.save(); // ultima poziție, înainte să dispară player-ul
+    ctx.alive = false;
+    stopNext();
+    try {
+      video.pause();
+      video.removeAttribute("src"); // închide conexiunea /ts/stream spre TorrServer
+      video.load();
+    } catch (_) {}
+  };
 }
 
 /* ---------- subtitrări automate ---------- */
@@ -1291,7 +1516,7 @@ function addRuTrack(video, src, label) {
   return track;
 }
 
-function attachSubtitles(video, t, data, season, episode, source = {}) {
+function attachSubtitles(video, t, data, season, episode, source = {}, ctx = { alive: true }) {
   const ccEl = modalBody.querySelector("#cc-state");
   const setState = (text, ok) => {
     if (!ccEl) return;
@@ -1314,6 +1539,7 @@ function attachSubtitles(video, t, data, season, episode, source = {}) {
     fetch(`/api/subtitles/file?q=${encodeURIComponent(q)}`)
       .then((r) => (r.ok ? r.text() : null))
       .then((vtt) => {
+        if (!ctx.alive) return;
         if (vtt && vtt.includes("-->")) {
           addRuTrack(video, `/api/subtitles/file?q=${encodeURIComponent(q)}`, "RU");
           setState("CC RU ✓", true);
@@ -1339,8 +1565,10 @@ function attachSubtitles(video, t, data, season, episode, source = {}) {
     const statusUrl = `/api/subtitles/mux?url=${encodeURIComponent(data.stream_url)}`;
     const dataUrl = `/api/subtitles/mux/data?url=${encodeURIComponent(data.stream_url)}`;
     const poll = async () => {
+      if (!ctx.alive) return; // player închis sau alt fișier ales — oprim verificarea
       try {
         const st = await fetch(statusUrl).then((r) => r.json());
+        if (!ctx.alive) return;
         if (st.status === "done") {
           addRuTrack(video, dataUrl, "RU");
           setState("CC RU ✓", true);
@@ -1351,7 +1579,7 @@ function attachSubtitles(video, t, data, season, episode, source = {}) {
           tryExternal();
         }
       } catch (_) {
-        tryExternal();
+        if (ctx.alive) tryExternal();
       }
     };
     setState("CC… se extrag", false);
@@ -1390,8 +1618,10 @@ function toggleFull(video) {
 function playerKeysHandler(e) {
   const video = modalBody.querySelector("#video");
   if (!video || modal.classList.contains("hidden")) return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
   const tag = (e.target.tagName || "").toUpperCase();
-  if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+  if (["INPUT", "SELECT", "TEXTAREA", "BUTTON", "VIDEO"].includes(tag)) return; // altfel acțiune dublă
+  if (e.target.getAttribute && e.target.getAttribute("role") === "button") return;
   if (e.key === " " || e.key.toLowerCase() === "k") {
     e.preventDefault();
     video.paused ? video.play() : video.pause();
@@ -1407,23 +1637,51 @@ function playerKeysHandler(e) {
 }
 
 /* ---------- istoric progres ---------- */
-let lastHistorySave = 0;
-function trackProgress(video, t, season, episode) {
-  video.addEventListener("timeupdate", () => {
-    const now = Date.now();
-    if (now - lastHistorySave < 10000 || video.currentTime < 5) return;
-    lastHistorySave = now;
+/* salvarea progresului pentru player-ul curent (folosită la ascunderea/închiderea paginii) */
+let currentProgressSave = null;
+
+function trackProgress(video, t, season, episode, ctx) {
+  let lastAt = 0;
+  let lastPos = -1;
+  const send = (pos, dur) =>
     api("/api/history", {
       method: "POST",
+      keepalive: true, // ajunge la server chiar dacă pagina se închide
       body: JSON.stringify({
         title_id: t.id,
         season: season ?? null,
         episode: episode ?? null,
-        position_seconds: video.currentTime,
-        duration_seconds: video.duration || null,
+        position_seconds: pos,
+        duration_seconds: dur || null,
       }),
     }).catch(() => {});
+
+  // force: la pauză/închidere; altfel cel mult o dată la 10s în timpul redării
+  const save = (force = false) => {
+    if (!ctx.alive || video.ended) return;
+    const pos = video.currentTime;
+    if (!(pos >= 5)) return;
+    if (!force && Date.now() - lastAt < 10000) return;
+    if (Math.abs(pos - lastPos) < (force ? 0.25 : 1)) return; // nimic nou de salvat
+    lastAt = Date.now();
+    lastPos = pos;
+    const dur = Number.isFinite(video.duration) ? video.duration : null;
+    send(pos, dur);
+  };
+
+  video.addEventListener("timeupdate", () => save(false));
+  video.addEventListener("pause", () => save(true));
+  // la final: văzut complet (filmele dispar din „Continuă”, episoadele primesc „văzut”)
+  video.addEventListener("ended", () => {
+    if (!ctx.alive) return;
+    const dur = Number.isFinite(video.duration) ? video.duration : video.currentTime;
+    lastPos = dur;
+    send(dur, dur);
   });
+
+  const api_ = { save: () => save(true) };
+  currentProgressSave = api_.save;
+  return api_;
 }
 
 /* ================= init ================= */

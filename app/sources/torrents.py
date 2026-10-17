@@ -326,7 +326,8 @@ def _torznab_indexer_list() -> list[tuple[str, str]]:
     )
     out: list[tuple[str, str]] = []
     try:
-        r = requests.get(url, headers=_mk_headers(), proxies=_proxies(), timeout=15)
+        # Jackett e serviciu intern (docker) — niciodată prin PROXY-ul extern
+        r = requests.get(url, headers=_mk_headers(), timeout=15)
         r.raise_for_status()
         root = ElementTree.fromstring(r.content)
         for ix in root.iter("indexer"):
@@ -354,7 +355,7 @@ def _search_torznab(query: str, limit: int) -> list[dict]:
             f"{Config.TORZNAB_URL.rstrip('/')}/api/v2.0/indexers/{idx_id}/results/torznab/api"
             f"?apikey={Config.TORZNAB_API_KEY}&q={quote(query)}&limit={limit}"
         )
-        r = requests.get(url, headers=_mk_headers(), proxies=_proxies(), timeout=25)
+        r = requests.get(url, headers=_mk_headers(), timeout=25)
         r.raise_for_status()
         out = _parse_torznab(r.content)
         for x in out:
