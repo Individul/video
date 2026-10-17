@@ -12,7 +12,7 @@
   --success: #76e67a;
   --danger: #ea4e4e;
   --radius: 14px;
-  --nav-w: 84px;
+  --nav-w: 92px;
 }
 
 * { box-sizing: border-box; }
@@ -117,22 +117,23 @@ body {
 .nav-items { display: flex; flex-direction: column; gap: 6px; }
 .nav-item {
   position: relative;
-  width: 52px; height: 44px;
+  width: 74px; height: 62px;
+  flex-direction: column; gap: 5px; /* iconiță + etichetă dedesubt */
   border: none; background: none; color: var(--sub);
   cursor: pointer; border-radius: 12px;
   display: flex; align-items: center; justify-content: center;
   transition: background 0.15s, color 0.15s;
 }
-.nav-item svg { width: 22px; height: 22px; fill: currentColor; }
+.nav-item svg { width: 27px; height: 27px; fill: currentColor; flex-shrink: 0; }
 .nav-item:hover { background: var(--card); color: var(--text); }
 .nav-item.active { color: var(--accent); }
 .nav-item.active::before {
   content: "";
-  position: absolute; left: -14px; top: 8px; bottom: 8px;
+  position: absolute; left: -9px; top: 10px; bottom: 10px;
   width: 3px; border-radius: 3px;
   background: var(--accent);
 }
-.nav-tip { display: none; }
+.nav-tip { display: block; font-size: 0.68rem; font-weight: 600; line-height: 1; letter-spacing: 0.1px; }
 
 main#content {
   margin-left: var(--nav-w);
