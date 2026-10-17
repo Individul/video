@@ -806,6 +806,29 @@ async def list_downloads() -> list[dict]:
         ) from e
 
 
+async def torrent_stats(torrent_hash: str) -> dict:
+    """Starea torrentului care rulează (panoul „Stare” din player): viteză, peers,
+    cât e încărcat în avans în cache — ca să se vadă de unde vine un eventual buffering."""
+    if not _HASH_RE.match(torrent_hash or ""):
+        raise SourceError("Hash de torrent invalid")
+    try:
+        t = await asyncio.to_thread(_ts_request, "get", torrent_hash.lower()) or {}
+    except Exception as e:  # noqa: BLE001
+        raise SourceError(f"TorrServer nu răspunde ({e}).") from e
+    return {
+        "status": t.get("stat_string") or "",
+        "download_bps": int((t.get("download_speed") or 0) * 8),
+        "upload_bps": int((t.get("upload_speed") or 0) * 8),
+        "peers_active": t.get("active_peers") or 0,
+        "peers_total": t.get("total_peers") or 0,
+        "seeders": t.get("connected_seeders") or 0,
+        "preloaded": t.get("preloaded_bytes") or 0,  # cât e încărcat înaintea poziției curente
+        "cache_size": t.get("preload_size") or 0,
+        "read": t.get("bytes_read") or 0,
+        "size": t.get("torrent_size") or 0,
+    }
+
+
 def _attach_file_sizes(h: str, files: list[dict]) -> None:
     """Adaugă `size` (bytes) fiecărui fișier, din file_stats-ul TorrServer (best-effort).
     Frontendul decide după mărime dacă extrage automat subtitrările din MKV."""

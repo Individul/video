@@ -1024,3 +1024,171 @@ main#content {
 .cal-badge.k-cinema { color: #ffb36b; }
 .cal-badge.k-digital { color: var(--success); }
 .cal-badge.k-episode { color: #8fb6ff; }
+
+/* =================== MODUL CINEMA (player pe toată fereastra) =================== */
+body.cinema-open { overflow: hidden; }
+.cinema {
+  position: fixed; inset: 0; z-index: 70;
+  background: #000; color: var(--text);
+  display: flex; flex-direction: column;
+}
+.cin-top {
+  position: absolute; left: 0; right: 0; top: 0; z-index: 6;
+  display: flex; align-items: center; gap: 1rem;
+  padding: 0.9rem 1.2rem 2.2rem;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.85), transparent);
+  transition: opacity 0.25s;
+}
+.cin-back {
+  width: 44px; height: 44px; border-radius: 50%; border: none; cursor: pointer;
+  background: rgba(255, 255, 255, 0.12); color: var(--text);
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.cin-back:hover { background: rgba(255, 255, 255, 0.22); }
+.cin-titles { min-width: 0; flex: 1; }
+.cin-title { font-size: 1.15rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cin-sub { color: #cfcfcf; font-size: 0.85rem; margin-top: 2px; }
+.cin-mini {
+  font-size: 0.8rem; color: #d6d6d6; white-space: nowrap;
+  background: rgba(255, 255, 255, 0.08); border-radius: 999px; padding: 0.3rem 0.8rem;
+  display: flex; align-items: center; gap: 0.45rem;
+}
+.cin-mini:empty { display: none; }
+.dot-ok, .dot-mid, .dot-bad { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.dot-ok { background: var(--success); }
+.dot-mid { background: var(--accent); }
+.dot-bad { background: var(--danger); }
+.cin-tabs { display: flex; gap: 0.35rem; }
+.cin-tab {
+  border: none; cursor: pointer; border-radius: 10px;
+  background: rgba(255, 255, 255, 0.1); color: var(--text);
+  padding: 0.5rem 0.95rem; font-size: 0.88rem; font-weight: 600;
+}
+.cin-tab:hover { background: rgba(255, 255, 255, 0.2); }
+.cin-tab.on { background: var(--accent); color: #111; }
+
+.cin-body { flex: 1; display: flex; min-height: 0; }
+.cin-stage { flex: 1; min-width: 0; position: relative; display: flex; }
+.cin-stage #player { flex: 1; margin: 0 !important; max-width: none !important; display: flex; position: relative; }
+.cin-video { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; background: #000; }
+.cin-video video {
+  width: 100%; height: 100%; max-height: none !important; aspect-ratio: auto !important;
+  border-radius: 0 !important; object-fit: contain; background: #000; cursor: pointer;
+}
+.cin-status {
+  margin: auto; text-align: center; color: #cfcfcf; font-size: 1.05rem; padding: 2rem; max-width: 720px;
+  display: flex; flex-direction: column; gap: 0.6rem; overflow-wrap: anywhere;
+}
+.cin-status small { color: var(--sub); font-size: 0.82rem; }
+.cin-status.error { color: #ff9c9c; }
+.cin-video .buffer { top: calc(50% - 26px); left: calc(50% - 26px); width: 52px; height: 52px; }
+.cin-video .video-error {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  max-width: 560px; text-align: center; font-size: 0.95rem; z-index: 3; margin: 0;
+}
+.cin-bigplay {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: 92px; height: 92px; border-radius: 50%; border: none; cursor: pointer;
+  background: rgba(255, 226, 22, 0.92); color: #111; z-index: 2;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+.cin-bigplay svg { margin-left: 6px; }
+
+/* bara de jos */
+.cin-controls {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 3;
+  padding: 2.4rem 1.4rem 0.9rem;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.88), transparent);
+  transition: opacity 0.25s;
+}
+.cin-progress { position: relative; height: 18px; display: flex; align-items: center; cursor: pointer; touch-action: none; }
+.cin-track { position: relative; width: 100%; height: 4px; border-radius: 4px; background: rgba(255, 255, 255, 0.22); transition: height 0.12s; }
+.cin-progress:hover .cin-track { height: 7px; }
+.cin-track i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; }
+.cin-track .buf { background: rgba(255, 255, 255, 0.38); }
+.cin-track .played { background: var(--accent); }
+.cin-track .knob {
+  width: 14px; height: 14px; top: 50%; bottom: auto; margin: -7px 0 0 -7px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 0 4px rgba(255, 226, 22, 0.25); opacity: 0; transition: opacity 0.12s;
+}
+.cin-progress:hover .knob { opacity: 1; }
+.cin-hover {
+  position: absolute; bottom: 20px; transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.85); color: var(--text); font-size: 0.78rem; font-weight: 600;
+  padding: 2px 7px; border-radius: 6px; pointer-events: none; white-space: nowrap;
+}
+.cin-row { display: flex; align-items: center; gap: 0.35rem; margin-top: 0.45rem; }
+.cin-grow { flex: 1; }
+.cbtn {
+  border: none; background: none; color: var(--text); cursor: pointer;
+  width: 42px; height: 42px; border-radius: 10px;
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.cbtn:hover { background: rgba(255, 255, 255, 0.12); color: var(--accent); }
+.cbtn.txt { width: auto; padding: 0 0.7rem; font-weight: 800; font-size: 0.85rem; letter-spacing: 0.3px; }
+.cbtn.on { color: var(--accent); }
+.cin-vol { display: flex; align-items: center; }
+.cin-vol input { width: 0; opacity: 0; transition: width 0.18s, opacity 0.18s; accent-color: var(--accent); }
+.cin-vol:hover input, .cin-vol input:focus { width: 90px; opacity: 1; margin-right: 0.4rem; }
+.cin-time { font-size: 0.86rem; color: #e0e0e0; font-variant-numeric: tabular-nums; margin-left: 0.4rem; white-space: nowrap; }
+
+/* meniuri (subtitrări, viteză) */
+.cin-pop {
+  position: absolute; bottom: 82px; right: 7.5rem; z-index: 5;
+  min-width: 220px; max-width: 320px;
+  background: rgba(24, 25, 26, 0.97); border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px; padding: 0.7rem; box-shadow: 0 14px 50px rgba(0, 0, 0, 0.6);
+}
+.cin-pop.right { right: 4.6rem; min-width: 150px; }
+.cin-pop-title { font-size: 0.78rem; color: var(--sub); text-transform: uppercase; letter-spacing: 0.8px; margin: 0.1rem 0.4rem 0.5rem; }
+.cin-pop .cc-state { margin: 0 0.4rem 0.5rem; display: inline-block; }
+.cin-pop #cc-extract { margin: 0 0.4rem 0.5rem; }
+.cin-pop-list { display: flex; flex-direction: column; }
+.cin-pop-list button {
+  border: none; background: none; color: var(--text); cursor: pointer; text-align: left;
+  padding: 0.5rem 0.7rem; border-radius: 8px; font-size: 0.9rem;
+}
+.cin-pop-list button:hover { background: rgba(255, 255, 255, 0.08); }
+.cin-pop-list button.on { color: var(--accent); font-weight: 700; }
+.cin-pop-list button.on::before { content: "✓ "; }
+
+/* „urmează” peste video */
+.cinema .next-ep {
+  position: absolute; right: 1.6rem; bottom: 110px; z-index: 4; margin: 0;
+  background: rgba(24, 25, 26, 0.95);
+}
+
+/* panoul lateral */
+.cin-panel {
+  width: min(460px, 38vw); flex-shrink: 0; overflow-y: auto;
+  background: var(--bg); border-left: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 4.6rem 0 1.5rem; position: relative; z-index: 5;
+}
+.cin-panel .sub-title, .cin-panel .q-filter, .cin-panel .torrent-list,
+.cin-panel .season-chips, .cin-panel .eps-grid, .cin-panel .eps-more-wrap { margin-left: 1rem !important; margin-right: 1rem !important; }
+.cin-panel #cin-files select {
+  width: calc(100% - 2rem); margin: 0 1rem 0.6rem;
+  background: var(--card); color: var(--text); border: 1px solid #2f3133; border-radius: 10px; padding: 0.5rem 0.7rem;
+}
+.cin-panel .eps-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.cin-panel .t-q { width: 46px; }
+.cin-verdict { margin: 0 1rem 1rem; padding: 0.8rem 1rem; border-radius: 12px; font-size: 0.92rem; line-height: 1.45; }
+.cin-verdict.ok { background: rgba(118, 230, 122, 0.12); color: var(--success); }
+.cin-verdict.mid { background: rgba(255, 226, 22, 0.1); color: var(--accent); }
+.cin-verdict.bad { background: rgba(234, 78, 78, 0.13); color: #ff9c9c; }
+.cin-facts { margin: 0 1rem !important; font-size: 0.86rem; }
+.cin-facts dd.wrap { overflow-wrap: anywhere; color: var(--sub); }
+.cin-hint { margin: 1rem; color: var(--sub); font-size: 0.8rem; line-height: 1.45; }
+
+/* inactiv: totul dispare, rămâne doar filmul (și cursorul se ascunde) */
+.cinema.idle .cin-top, .cinema.idle .cin-controls { opacity: 0; pointer-events: none; }
+.cinema.idle .cin-video, .cinema.idle .cin-video video { cursor: none; }
+
+@media (max-width: 760px) {
+  .cin-top { padding: 0.6rem 0.6rem 1.6rem; gap: 0.5rem; flex-wrap: wrap; }
+  .cin-mini { display: none; }
+  .cin-panel { position: absolute; inset: 0; width: 100%; padding-top: 4.2rem; }
+  .cin-vol input { display: none; }
+  .cin-pop { right: 0.6rem !important; }
+}

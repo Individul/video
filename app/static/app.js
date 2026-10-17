@@ -132,6 +132,14 @@ const I = {
   film: "M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V4z",
   yt: "M4 4.8h16a3.2 3.2 0 0 1 3.2 3.2v8a3.2 3.2 0 0 1-3.2 3.2H4A3.2 3.2 0 0 1 .8 16V8A3.2 3.2 0 0 1 4 4.8zM10.2 8.7v6.6l5.8-3.3z",
   external: "M14 3v2h3.6l-9.8 9.8 1.4 1.4L19 6.4V10h2V3zM5 5h5V3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5h-2v5z",
+  pause: "M6 5h4v14H6zm8 0h4v14h-4z",
+  back10: "M12 5V1L7 6l5 5V7a6 6 0 1 1-6 6H4a8 8 0 1 0 8-8z",
+  fwd10: "M12 5V1l5 5-5 5V7a6 6 0 1 0 6 6h2a8 8 0 1 1-8-8z",
+  prev: "M6 6h2v12H6zm3.5 6 8.5 6V6z",
+  next: "M6 18l8.5-6L6 6zm10-12v12h2V6z",
+  vol: "M3 9v6h4l5 5V4L7 9zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z",
+  mute: "M3 9v6h4l5 5V4L7 9zm14.6 3 2.4-2.4-1.4-1.4-2.4 2.4-2.4-2.4-1.4 1.4 2.4 2.4-2.4 2.4 1.4 1.4 2.4-2.4 2.4 2.4 1.4-1.4z",
+  unfull: "M5 16h3v3h2v-5H5zm3-8H5v2h5V5H8zm6 11h2v-3h3v-2h-5zm2-11V5h-2v5h5V8z",
 };
 const svg = (p, size = 18) =>
   `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="currentColor" fill-rule="evenodd"><path d="${p}"/></svg>`;
@@ -1023,7 +1031,159 @@ function beginPlay() {
   return playSeq;
 }
 
+/* ================= MODUL CINEMA =================
+   La redare, player-ul (#player), lista de versiuni (#torrents) și episoadele (#tab-eps)
+   se mută din pagina filmului într-un strat pe toată fereastra; la închidere revin la loc
+   (un comentariu-marcaj le ține locul). Mutarea păstrează toți listenerii. */
+const cinema = $("#cinema");
+const cinemaSlots = {}; // id -> { ph: marcajul din pagină, wasHidden }
+
+function moveIntoCinema(id, target) {
+  const el = document.getElementById(id);
+  if (!el || cinemaSlots[id]) return;
+  const ph = document.createComment(`loc:${id}`);
+  el.before(ph);
+  cinemaSlots[id] = { ph, wasHidden: el.classList.contains("hidden") };
+  el.classList.remove("hidden");
+  target.appendChild(el);
+}
+function restoreFromCinema(id) {
+  const slot = cinemaSlots[id];
+  if (!slot) return;
+  delete cinemaSlots[id];
+  const el = document.getElementById(id);
+  if (el && slot.ph.isConnected) {
+    slot.ph.replaceWith(el);
+    el.classList.toggle("hidden", slot.wasHidden);
+  } else {
+    el?.remove(); // pagina filmului s-a schimbat între timp
+    slot.ph.remove();
+  }
+}
+const cinemaOpen = () => !cinema.classList.contains("hidden");
+
+function enterCinema(t) {
+  $("#cin-title").textContent = t.name;
+  $("#cin-sub").textContent = "";
+  $("#cin-mini").textContent = "";
+  $("#cin-tab-eps").classList.toggle("hidden", t.type !== "series");
+  if (cinemaOpen()) return;
+  moveIntoCinema("player", $("#cin-stage"));
+  moveIntoCinema("torrents", $("#cin-pane-versions"));
+  if (t.type === "series") moveIntoCinema("tab-eps", $("#cin-pane-eps"));
+  cinema.classList.remove("hidden");
+  document.body.classList.add("cinema-open");
+  wakeCinemaUi();
+}
+
+function exitCinema() {
+  if (!cinemaOpen()) return;
+  stopPlayer();
+  stopStatsPoll();
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  const p = $("#player");
+  if (p) p.innerHTML = "";
+  $("#cin-files").innerHTML = "";
+  ["player", "torrents", "tab-eps"].forEach(restoreFromCinema);
+  setCinemaPanel(null);
+  cinema.classList.add("hidden");
+  cinema.classList.remove("idle");
+  document.body.classList.remove("cinema-open");
+}
+
+/* panoul lateral: versiuni / episoade / stare (al doilea clic pe același buton îl închide) */
+function setCinemaPanel(name) {
+  const panel = $("#cin-panel");
+  if (!name || (panel.dataset.pane === name && !panel.classList.contains("hidden"))) {
+    panel.classList.add("hidden");
+    panel.dataset.pane = "";
+    name = null;
+  } else {
+    panel.classList.remove("hidden");
+    panel.dataset.pane = name;
+    ["versions", "eps", "stats"].forEach((n) => $(`#cin-pane-${n}`).classList.toggle("hidden", n !== name));
+    if (name === "stats") refreshStats();
+  }
+  document.querySelectorAll(".cin-tab").forEach((b) => b.classList.toggle("on", b.dataset.pane === name));
+}
+document.querySelectorAll(".cin-tab").forEach((b) => b.addEventListener("click", () => setCinemaPanel(b.dataset.pane)));
+$("#cin-close").addEventListener("click", exitCinema);
+
+/* comenzile dispar după 3 s fără mișcare cât timp filmul rulează (ca la cinema) */
+let cinemaIdleTimer = null;
+function wakeCinemaUi() {
+  cinema.classList.remove("idle");
+  clearTimeout(cinemaIdleTimer);
+  cinemaIdleTimer = setTimeout(() => {
+    const v = $("#video");
+    const popOpen = cinema.querySelector(".cin-pop:not(.hidden)");
+    if (v && !v.paused && !popOpen && cinemaOpen()) cinema.classList.add("idle");
+  }, 3000);
+}
+["mousemove", "pointerdown", "keydown"].forEach((ev) => cinema.addEventListener(ev, wakeCinemaUi, { passive: true }));
+
+/* ---------- starea torrentului (bara de sus + panoul „Stare”) ---------- */
+let statsTimer = null;
+let currentStream = null; // { hash, size, name, quality }
+const fmtMbit = (bps) => (bps / 1e6).toFixed(bps >= 1e7 ? 0 : 1);
+const fmtMB = (b) => (b >= 1e9 ? (b / 1e9).toFixed(1) + " GB" : Math.round(b / 1e6) + " MB");
+
+function startStatsPoll(info) {
+  currentStream = info;
+  stopStatsPoll();
+  refreshStats();
+  statsTimer = setInterval(refreshStats, 3000);
+}
+function stopStatsPoll() {
+  clearInterval(statsTimer);
+  statsTimer = null;
+}
+async function refreshStats() {
+  const cur = currentStream;
+  if (!cur || !cinemaOpen()) return;
+  let s;
+  try {
+    s = await api(`/api/torrents/stats/${cur.hash}`);
+  } catch (_) {
+    return;
+  }
+  if (cur !== currentStream) return;
+  const video = $("#video");
+  const dur = video && Number.isFinite(video.duration) ? video.duration : 0;
+  const bitrate = dur && cur.size ? (cur.size * 8) / dur : 0; // debitul mediu al filmului
+  const cacheFull = s.cache_size && s.preloaded >= s.cache_size * 0.8;
+  const ahead = bitrate ? Math.round((s.preloaded * 8) / bitrate) : 0; // secunde încărcate înainte
+  let verdict, cls;
+  if (cacheFull || (bitrate && s.download_bps >= bitrate * 1.3)) {
+    verdict = "Torrentul ține pasul cu filmul.";
+    cls = "ok";
+  } else if (bitrate && s.download_bps < bitrate && s.preloaded < (s.cache_size || 1) * 0.3) {
+    verdict = "Torrentul descarcă mai încet decât debitul filmului — poate apărea buffering. Alege o versiune cu mai mulți seederi sau 1080p în loc de 4K.";
+    cls = "bad";
+  } else {
+    verdict = "Se încarcă — viteza ar trebui să ajungă.";
+    cls = "mid";
+  }
+  $("#cin-mini").innerHTML = `<span class="dot-${cls}"></span>↓ ${fmtMbit(s.download_bps)} Mbit/s · ${s.peers_active} peers${ahead ? ` · ${ahead}s în avans` : ""}`;
+  if ($("#cin-panel").dataset.pane === "stats") {
+    $("#cin-pane-stats").innerHTML = `
+      <div class="cin-verdict ${cls}">${esc(verdict)}</div>
+      <dl class="facts cin-facts">
+        <dt>Viteză descărcare</dt><dd>${fmtMbit(s.download_bps)} Mbit/s</dd>
+        <dt>Debitul filmului</dt><dd>${bitrate ? `~${fmtMbit(bitrate)} Mbit/s` : "—"}</dd>
+        <dt>Încărcat în avans</dt><dd>${fmtMB(s.preloaded)}${s.cache_size ? ` din ${fmtMB(s.cache_size)} cache` : ""}${ahead ? ` (~${ahead} s de film)` : ""}</dd>
+        <dt>Peers activi</dt><dd>${s.peers_active} din ${s.peers_total} (seederi ${s.seeders})</dd>
+        <dt>Upload</dt><dd>${fmtMbit(s.upload_bps)} Mbit/s</dd>
+        <dt>Citit până acum</dt><dd>${fmtMB(s.read)}</dd>
+        <dt>Mărime fișier</dt><dd>${cur.size ? fmtMB(cur.size) : "—"}</dd>
+        <dt>Fișier</dt><dd class="wrap">${esc(cur.name || "")}</dd>
+      </dl>
+      <div class="cin-hint">Când cache-ul e plin, viteza scade la 0 — e normal: TorrServer așteaptă să consumi din ce a încărcat.</div>`;
+  }
+}
+
 function closeDetail() {
+  exitCinema();
   const wasOpen = !modal.classList.contains("hidden");
   detailSeq++;
   stopPlayer();
@@ -1037,6 +1197,7 @@ function closeDetail() {
 window.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     if (document.fullscreenElement) return; // Escape iese întâi din fullscreen
+    if (cinemaOpen()) return exitCinema();
     if (!searchOverlay.classList.contains("hidden")) return closeSearch();
     if (!modal.classList.contains("hidden")) leaveDetail();
   }
@@ -1117,6 +1278,7 @@ function detailHeadHtml(t, isSeries) {
 }
 
 function renderModal(t, opts = {}) {
+  exitCinema(); // nodurile mutate în modul cinema trebuie readuse înainte de re-randare
   stopPlayer();
   epsBySeason = {}; // cache episoade per titlu deschis
   const ds = detailSeq;
@@ -1259,12 +1421,17 @@ function renderModal(t, opts = {}) {
     } catch (_) {}
   })();
 
-  if (!isSeries && !opts.noAutoplay) autoPlayBest(t, opts.seekTo || null);
+  // fără redare automată la deschidere (pornea torrentul pentru orice film răsfoit):
+  // doar lista de versiuni; filmul pornește în modul cinema la „Vizionează” / clic pe versiune
+  if (!isSeries) {
+    if (opts.seekTo) autoPlayBest(t, opts.seekTo);
+    else loadVersions(t);
+  }
 }
 
 /* ---------- trailer în modal (embed, nu fereastră nouă) ---------- */
 function playTrailer(t) {
-  const playerBox = modalBody.querySelector("#player");
+  const playerBox = $("#player");
   if (!playerBox || !t.trailer) return;
   let key = null;
   try {
@@ -1275,7 +1442,7 @@ function playTrailer(t) {
     return;
   }
   // salvăm poziția filmului ca să reluăm de unde a rămas
-  const video = modalBody.querySelector("#video");
+  const video = $("#video");
   const resumeAt = video && video.currentTime > 15 ? video.currentTime : null;
   stopPlayer(); // salvează progresul, oprește stream-ul și orice redare încă în pornire
 
@@ -1291,22 +1458,20 @@ function playTrailer(t) {
       <span class="cc-state on">Trailer</span>
       <button class="btn small ghost" id="trailer-back">${svg(I.play, 14)} Înapoi la film</button>
     </div>`;
-  modalBody.querySelector("#torrents").classList.add("hidden");
-  const pill = modalBody.querySelector("#pill");
+  $("#torrents").classList.add("hidden");
+  const pill = $("#pill");
   if (pill) pill.classList.add("hidden");
 
   playerBox.querySelector("#trailer-back").addEventListener("click", () => {
-    modalBody.querySelector("#torrents").classList.remove("hidden");
+    $("#torrents").classList.remove("hidden");
     if (pill) pill.classList.remove("hidden");
+    playerBox.innerHTML = "";
     if (t.type === "series") {
-      playerBox.innerHTML = `<div class="status" style="padding:1rem">Alege un episod din tabul „Episoade”.</div>`;
       const epsTab = modalBody.querySelector("#m-tabs button[data-tab='eps']");
       if (epsTab) epsTab.click();
     } else if (resumeAt) {
-      autoPlayBest(t, resumeAt);
-    } else {
-      autoPlayBest(t);
-    }
+      autoPlayBest(t, resumeAt); // filmul rula înainte de trailer: îl reluăm
+    } // altfel rămâi pe pagină; filmul pornește la „Vizionează”
   });
   setTimeout(updateModalFade, 250);
 }
@@ -1541,24 +1706,55 @@ async function startStream(source, { fileIndex = 0, season = null, episode = nul
   return api("/api/torrents/play", { method: "POST", body: JSON.stringify(body) });
 }
 
-async function autoPlayBest(t, seekTo = null) {
-  const ps = beginPlay();
-  lastDetailTitle = t;
-  const playerBox = modalBody.querySelector("#player");
-  if (!playerBox) return;
-  playerBox.innerHTML = `<div class="status" style="padding:1rem">Caut release-ul potrivit...</div>`;
+/* versiunile filmului (căutare de torrente, fără redare): la deschiderea paginii lista
+   apare sub „Vizionează”, dar torrentul nu pornește până nu alegi tu (economie de bandă) */
+let versionsFor = null; // { id, promise } — o singură căutare per film deschis
+function findVersions(t) {
+  if (versionsFor && versionsFor.id === t.id) return versionsFor.promise;
   const q = t.name_original || t.name;
   const alt = t.name_original && t.name_original !== t.name ? t.name : null;
+  const promise = fetchTorrents(t, q, alt);
+  versionsFor = { id: t.id, promise };
+  promise.catch(() => {
+    if (versionsFor && versionsFor.promise === promise) versionsFor = null; // reîncercare la următorul clic
+  });
+  return promise;
+}
+
+async function loadVersions(t) {
+  const box = $("#torrents");
+  if (!box) return;
+  const ds = detailSeq;
+  box.innerHTML = `<div class="sub-title">Versiuni</div><div class="status" style="padding:1.2rem">Caut versiunile disponibile…</div>`;
+  try {
+    const results = await findVersions(t);
+    if (ds !== detailSeq) return;
+    lastTorrentResults = results;
+    buildTorrentsList(t, results);
+  } catch (err) {
+    if (ds === detailSeq) box.innerHTML = `<div class="sub-title">Versiuni</div><div class="status error">${esc(err.message)}</div>`;
+  }
+}
+
+async function autoPlayBest(t, seekTo = null) {
+  enterCinema(t);
+  const ps = beginPlay();
+  lastDetailTitle = t;
+  const playerBox = $("#player");
+  if (!playerBox) return;
+  playerBox.innerHTML = `<div class="cin-status">Caut release-ul potrivit…</div>`;
   let results;
   try {
-    results = await fetchTorrents(t, q, alt);
+    results = await findVersions(t);
   } catch (err) {
-    if (ps === playSeq) playerBox.innerHTML = `<div class="status error">${esc(err.message)}</div>`;
+    if (ps === playSeq) playerBox.innerHTML = `<div class="cin-status error">${esc(err.message)}</div>`;
     return;
   }
   if (ps !== playSeq) return;
-  lastTorrentResults = results;
-  buildTorrentsList(t, results);
+  if (lastTorrentResults !== results) {
+    lastTorrentResults = results;
+    buildTorrentsList(t, results);
+  }
   await playTorrent(t, results[0], { seekTo, ps });
 }
 
@@ -1569,7 +1765,7 @@ function qualityOf(r) {
 }
 
 function buildTorrentsList(t, results) {
-  const box = modalBody.querySelector("#torrents");
+  const box = $("#torrents");
   if (!box) return;
 
   // filtre rapide: doar calitățile care chiar există în rezultate + dublaj RU
@@ -1628,14 +1824,14 @@ function buildTorrentsList(t, results) {
 
 /* versiunea care rulează: evidențiată în listă + rezumat deasupra listei */
 function markPlaying(source) {
-  modalBody.querySelectorAll("#torrent-list .torrent-row").forEach((row) =>
+  document.querySelectorAll("#torrent-list .torrent-row").forEach((row) =>
     row.classList.toggle("playing", row._src === source)
   );
   pillShow(source);
 }
 
 function pillShow(source) {
-  const pill = modalBody.querySelector("#pill");
+  const pill = $("#pill");
   if (!pill) return;
   pill.classList.remove("hidden");
   const short = (source.name || "").replace(/\s+/g, " ").slice(0, 70);
@@ -1650,13 +1846,13 @@ function pillShow(source) {
 
 /* caută release-uri pentru un episod și rulează pachetul potrivit sezonului */
 async function playEpisode(t, season, episode, seekTo = null) {
+  enterCinema(t);
+  $("#cin-sub").textContent = `S${season} · E${episode}`;
   const ps = beginPlay();
-  const playerBox = modalBody.querySelector("#player");
+  const playerBox = $("#player");
   if (!playerBox) return;
-  const tabs = modalBody.querySelector("#m-tabs button[data-tab='play']");
-  if (tabs) tabs.click();
   lastDetailTitle = t;
-  playerBox.innerHTML = `<div class="status" style="padding:1rem">Caut episodul S${season}E${episode}...</div>`;
+  playerBox.innerHTML = `<div class="cin-status">Caut episodul S${season}E${episode}…</div>`;
 
   const alt = t.name_original && t.name_original !== t.name ? t.name_original : null;
   const queries = [
@@ -1678,7 +1874,7 @@ async function playEpisode(t, season, episode, seekTo = null) {
     }
   }
   if (!results) {
-    playerBox.innerHTML = `<div class="status error">Niciun release găsit pentru S${season}E${episode}. Încearcă din „Versiuni”.</div>`;
+    playerBox.innerHTML = `<div class="cin-status error">Niciun release găsit pentru S${season}E${episode}. Încearcă din panoul „Versiuni”.</div>`;
     return;
   }
   lastTorrentResults = results;
@@ -1718,21 +1914,25 @@ async function playEpisode(t, season, episode, seekTo = null) {
     }
   }
   if (!data) {
-    playerBox.innerHTML = `<div class="status error">Episodul S${season}E${episode} nu a putut fi pornit. Încearcă din „Versiuni”.</div>`;
+    playerBox.innerHTML = `<div class="cin-status error">Episodul S${season}E${episode} nu a putut fi pornit. Încearcă din panoul „Versiuni”.</div>`;
     return;
   }
   markPlaying(chosen);
   renderPlayer(t, chosen, data, { season, episode, seekTo });
   if (data.matched === false) {
-    toast(`S${season}E${episode} nu a fost identificat exact în pachet — alege fișierul din lista de sub player`, false);
+    toast(`S${season}E${episode} nu a fost identificat exact în pachet — alege fișierul din panoul „Versiuni”`, false);
   }
 }
 
 async function playTorrent(t, source, { season = null, episode = null, seekTo = null, fileIndex = 0, ps = null } = {}) {
-  if (ps == null) ps = beginPlay(); // apel direct (clic pe versiune / fișier)
-  const playerBox = modalBody.querySelector("#player");
+  if (ps == null) {
+    // apel direct (clic pe versiune / fișier): pornim în modul cinema
+    enterCinema(t);
+    ps = beginPlay();
+  }
+  const playerBox = $("#player");
   if (!playerBox) return;
-  playerBox.innerHTML = `<div class="status" style="padding:1rem">Conectez TorrServer...</div>`;
+  playerBox.innerHTML = `<div class="cin-status">Conectez TorrServer…<small>${esc(source.name || "")}</small></div>`;
   markPlaying(source);
 
   let data;
@@ -1740,7 +1940,7 @@ async function playTorrent(t, source, { season = null, episode = null, seekTo = 
     data = await startStream(source, { fileIndex, season, episode });
   } catch (err) {
     if (ps === playSeq)
-      playerBox.innerHTML = `<div class="status error">${esc(err.message)}<br><small>Alege altă versiune din lista de mai jos.</small></div>`;
+      playerBox.innerHTML = `<div class="cin-status error">${esc(err.message)}<small>Alege altă versiune din panoul „Versiuni”.</small></div>`;
     return;
   }
   if (ps !== playSeq) {
@@ -1752,29 +1952,69 @@ async function playTorrent(t, source, { season = null, episode = null, seekTo = 
 }
 
 function renderPlayer(t, source, data, { season = null, episode = null, seekTo = null, fileIndex = null } = {}) {
-  const playerBox = modalBody.querySelector("#player");
+  const playerBox = $("#player");
   if (!playerBox) return;
   // alive devine false la cleanup (opresc cronometre/poll-uri); onStop: acțiuni de oprire pe server
   const ctx = { alive: true, onStop: [] };
   keepTorrent(data.hash); // același torrent ca înainte (alt fișier din pachet): nu-l deconecta
   playerBox.innerHTML = `
-    <div class="video-wrap">
-      <video id="video" controls autoplay playsinline></video>
+    <div class="video-wrap cin-video">
+      <video id="video" autoplay playsinline></video>
       <div class="buffer hidden" id="buffer"></div>
       <div class="video-error hidden" id="video-error" role="alert"></div>
-      <div class="video-extra">
-        <span class="cc-state" id="cc-state" title="Subtitrări rusești">CC…</span>
-        <button class="btn small ghost" id="v-pip" title="Picture-in-picture">${svg(I.pip, 15)} PiP</button>
-        <button class="btn small ghost" id="v-full" title="Fullscreen (F / dublu-click)">${svg(I.full, 15)} Full</button>
+      <button class="cin-bigplay hidden" id="c-big" aria-label="Redă">${svg(I.play, 46)}</button>
+      <div class="cin-controls">
+        <div class="cin-progress" id="c-prog" role="slider" aria-label="Poziție">
+          <div class="cin-track"><i class="buf" id="c-buf"></i><i class="played" id="c-played"></i><i class="knob" id="c-knob"></i></div>
+          <div class="cin-hover hidden" id="c-hover"></div>
+        </div>
+        <div class="cin-row">
+          <button class="cbtn" id="c-play" title="Pauză / redare (Space)">${svg(I.pause, 26)}</button>
+          <button class="cbtn" id="c-back" title="Înapoi 10 s (←)">${svg(I.back10, 24)}</button>
+          <button class="cbtn" id="c-fwd" title="Înainte 10 s (→)">${svg(I.fwd10, 24)}</button>
+          <button class="cbtn hidden" id="c-prev" title="Episodul anterior">${svg(I.prev, 24)}</button>
+          <button class="cbtn hidden" id="c-next" title="Episodul următor">${svg(I.next, 24)}</button>
+          <div class="cin-vol">
+            <button class="cbtn" id="c-mute" title="Sunet (M)">${svg(I.vol, 24)}</button>
+            <input type="range" id="c-vol" min="0" max="1" step="0.05" aria-label="Volum">
+          </div>
+          <span class="cin-time" id="c-time">0:00 / 0:00</span>
+          <span class="cin-grow"></span>
+          <button class="cbtn txt" id="c-cc" title="Subtitrări">CC</button>
+          <button class="cbtn txt" id="c-speed" title="Viteză">1×</button>
+          <button class="cbtn" id="v-pip" title="Picture-in-picture">${svg(I.pip, 22)}</button>
+          <button class="cbtn" id="v-full" title="Ecran complet (F / dublu-clic)">${svg(I.full, 24)}</button>
+        </div>
       </div>
-    </div>
-    ${data.files.length > 1 ? `<select id="file-select"></select>` : ""}`;
+      <div class="cin-pop hidden" id="c-cc-pop">
+        <div class="cin-pop-title">Subtitrări</div>
+        <div class="cc-state" id="cc-state">CC…</div>
+        <div class="cin-pop-list" id="c-cc-list"></div>
+      </div>
+      <div class="cin-pop right hidden" id="c-speed-pop">
+        <div class="cin-pop-title">Viteză</div>
+        <div class="cin-pop-list">${[0.75, 1, 1.25, 1.5, 2]
+          .map((r) => `<button data-rate="${r}" class="${r === 1 ? "on" : ""}">${r === 1 ? "Normal" : r + "×"}</button>`)
+          .join("")}</div>
+      </div>
+    </div>`;
 
   const video = playerBox.querySelector("#video");
   video.src = data.stream_url;
 
-  // select fișier (în pachete de sezon) — poziții în array; cel activ = fișierul redat
-  const fileSel = playerBox.querySelector("#file-select");
+  // rândul de sus: sezon/episod + calitatea versiunii; jos-dreapta: starea torrentului
+  const subParts = [];
+  if (season != null && episode != null) subParts.push(`S${season} · E${episode}`);
+  if (source && source.quality) subParts.push(source.quality);
+  if (source && source.dub) subParts.push("dublaj RU");
+  $("#cin-sub").textContent = subParts.join(" · ");
+  startStatsPoll({ hash: data.hash, size: data.size, name: data.name, quality: source && source.quality });
+  ctx.onStop.push(stopStatsPoll);
+
+  // select fișier (în pachete de sezon) — în panoul „Versiuni”, deasupra listei
+  const filesBox = $("#cin-files");
+  filesBox.innerHTML = data.files.length > 1 ? `<div class="sub-title">Fișiere în acest torrent</div><select id="file-select"></select>` : "";
+  const fileSel = filesBox.querySelector("#file-select");
   if (fileSel) {
     const activePos =
       fileIndex != null
@@ -1890,14 +2130,21 @@ function renderPlayer(t, source, data, { season = null, episode = null, seekTo =
           : "Fișierul nu a putut fi redat.";
     const box = playerBox.querySelector("#video-error");
     if (box) {
-      box.innerHTML = `${esc(why)} Alege altă versiune din lista de mai jos.`;
+      box.innerHTML = `${esc(why)} Alege altă versiune din panoul „Versiuni”.`;
       box.classList.remove("hidden");
     }
-    modalBody.querySelector("#buffer")?.classList.add("hidden");
+    $("#buffer")?.classList.add("hidden");
     api("/api/health").catch(() => {}); // dacă sesiunea a expirat, api() deschide login-ul
   });
 
-  enhanceVideo(video);
+  enhanceVideo(video, {
+    ctx,
+    prev: s != null && e > 1 ? () => playEpisode(t, s, e - 1) : null,
+    // episodul următor: dacă sezonul e încărcat, doar când există; altfel încercăm
+    next: s != null && e != null && (!epsBySeason[s] || epsBySeason[s].some((x) => x.episode === e + 1))
+      ? () => playEpisode(t, s, e + 1)
+      : null,
+  });
 
   playerCleanup = () => {
     progress.save(); // ultima poziție, înainte să dispară player-ul
@@ -1932,7 +2179,7 @@ const MUX_AUTO_MAX_BYTES = 4e9;
 const fmtGB = (b) => (b / 1e9).toFixed(b >= 1e10 ? 0 : 1) + " GB";
 
 function attachSubtitles(video, t, data, season, episode, source = {}, ctx = { alive: true, onStop: [] }) {
-  const ccEl = modalBody.querySelector("#cc-state");
+  const ccEl = $("#cc-state");
   const setState = (text, ok) => {
     if (!ccEl) return;
     ccEl.textContent = text;
@@ -2037,16 +2284,168 @@ function attachSubtitles(video, t, data, season, episode, source = {}, ctx = { a
   tryExternal();
 }
 
-/* ---------- player: taste, PiP, fullscreen, spinner ---------- */
-function enhanceVideo(video) {
-  const buffer = modalBody.querySelector("#buffer");
-  video.addEventListener("waiting", () => buffer && buffer.classList.remove("hidden"));
-  ["playing", "canplay", "pause"].forEach((ev) =>
-    video.addEventListener(ev, () => buffer && buffer.classList.add("hidden"))
+/* ---------- player: comenzi proprii (modul cinema) ---------- */
+const PLAYER_PREFS_KEY = "cinema-player";
+function loadPlayerPrefs() {
+  try {
+    return JSON.parse(localStorage.getItem(PLAYER_PREFS_KEY)) || {};
+  } catch (_) {
+    return {};
+  }
+}
+function savePlayerPrefs(p) {
+  try {
+    localStorage.setItem(PLAYER_PREFS_KEY, JSON.stringify(p));
+  } catch (_) {}
+}
+
+function enhanceVideo(video, { ctx, prev = null, next = null } = {}) {
+  const q = (id) => document.getElementById(id);
+  const buffer = q("buffer"), big = q("c-big"), playBtn = q("c-play");
+  const prog = q("c-prog"), played = q("c-played"), buf = q("c-buf"), knob = q("c-knob"), hover = q("c-hover");
+  const timeEl = q("c-time"), muteBtn = q("c-mute"), vol = q("c-vol");
+  const ccBtn = q("c-cc"), ccPop = q("c-cc-pop"), ccList = q("c-cc-list");
+  const speedBtn = q("c-speed"), speedPop = q("c-speed-pop");
+
+  // volum + mute ținute minte între filme
+  const prefs = loadPlayerPrefs();
+  video.volume = prefs.volume != null ? prefs.volume : 1;
+  video.muted = !!prefs.muted;
+  const syncVol = () => {
+    vol.value = video.muted ? 0 : video.volume;
+    muteBtn.innerHTML = svg(video.muted || video.volume === 0 ? I.mute : I.vol, 24);
+    savePlayerPrefs({ ...loadPlayerPrefs(), volume: video.volume, muted: video.muted });
+  };
+  vol.addEventListener("input", () => {
+    video.volume = +vol.value;
+    video.muted = +vol.value === 0;
+  });
+  muteBtn.addEventListener("click", () => (video.muted = !video.muted));
+  video.addEventListener("volumechange", syncVol);
+  syncVol();
+
+  // play / pauză
+  const toggle = () => (video.paused ? video.play().catch(() => {}) : video.pause());
+  const syncPlay = () => {
+    playBtn.innerHTML = svg(video.paused ? I.play : I.pause, 26);
+    big.classList.toggle("hidden", !video.paused);
+    wakeCinemaUi();
+  };
+  ["play", "pause", "ended"].forEach((ev) => video.addEventListener(ev, syncPlay));
+  playBtn.addEventListener("click", toggle);
+  big.addEventListener("click", toggle);
+  video.addEventListener("click", toggle);
+  video.addEventListener("dblclick", () => toggleFull());
+  q("c-back").addEventListener("click", () => (video.currentTime = Math.max(0, video.currentTime - 10)));
+  q("c-fwd").addEventListener("click", () => (video.currentTime = Math.min(video.duration || 1e9, video.currentTime + 10)));
+  if (prev) q("c-prev").classList.remove("hidden"), q("c-prev").addEventListener("click", prev);
+  if (next) q("c-next").classList.remove("hidden"), q("c-next").addEventListener("click", next);
+
+  // spinner de buffering
+  video.addEventListener("waiting", () => buffer.classList.remove("hidden"));
+  ["playing", "canplay", "pause"].forEach((ev) => video.addEventListener(ev, () => buffer.classList.add("hidden")));
+
+  // bara de progres: redat + încărcat în avans (buffer), clic/tragere pentru derulare
+  const bufferedEnd = () => {
+    const b = video.buffered, t = video.currentTime;
+    for (let i = 0; i < b.length; i++) if (b.start(i) <= t + 0.5 && b.end(i) >= t) return b.end(i);
+    return t;
+  };
+  const syncTime = () => {
+    const d = Number.isFinite(video.duration) ? video.duration : 0;
+    const pct = d ? (video.currentTime / d) * 100 : 0;
+    played.style.width = pct + "%";
+    knob.style.left = pct + "%";
+    buf.style.width = d ? Math.min(100, (bufferedEnd() / d) * 100) + "%" : "0";
+    timeEl.textContent = `${fmtTime(video.currentTime)} / ${fmtTime(d)}`;
+  };
+  ["timeupdate", "progress", "loadedmetadata", "durationchange", "seeked"].forEach((ev) => video.addEventListener(ev, syncTime));
+  const fracAt = (ev) => {
+    const r = prog.getBoundingClientRect();
+    return Math.min(1, Math.max(0, (ev.clientX - r.left) / r.width));
+  };
+  let dragging = false;
+  const seekTo = (ev) => {
+    const d = video.duration;
+    if (Number.isFinite(d) && d > 0) {
+      video.currentTime = fracAt(ev) * d;
+      syncTime();
+    }
+  };
+  prog.addEventListener("pointerdown", (ev) => {
+    dragging = true;
+    prog.setPointerCapture(ev.pointerId);
+    seekTo(ev);
+  });
+  prog.addEventListener("pointermove", (ev) => {
+    const d = video.duration;
+    if (Number.isFinite(d) && d > 0) {
+      const f = fracAt(ev);
+      hover.textContent = fmtTime(f * d);
+      hover.style.left = f * 100 + "%";
+      hover.classList.remove("hidden");
+    }
+    if (dragging) seekTo(ev);
+  });
+  prog.addEventListener("pointerup", () => (dragging = false));
+  prog.addEventListener("pointerleave", () => hover.classList.add("hidden"));
+
+  // meniuri: subtitrări + viteză (unul singur deschis odată)
+  const closePops = (except) => [ccPop, speedPop].forEach((p) => p !== except && p.classList.add("hidden"));
+  const togglePop = (pop) => {
+    closePops(pop);
+    pop.classList.toggle("hidden");
+    if (pop === ccPop && !pop.classList.contains("hidden")) drawCcList();
+  };
+  const tracks = () => [...video.textTracks].filter((tr) => tr.kind === "subtitles" || tr.kind === "captions");
+  const syncCcBtn = () => ccBtn.classList.toggle("on", tracks().some((tr) => tr.mode === "showing"));
+  const drawCcList = () => {
+    const list = tracks();
+    ccList.innerHTML = "";
+    const add = (label, on, fn) => {
+      const b = document.createElement("button");
+      b.textContent = label;
+      b.classList.toggle("on", on);
+      b.addEventListener("click", () => {
+        fn();
+        syncCcBtn();
+        drawCcList();
+      });
+      ccList.appendChild(b);
+    };
+    add("Oprite", !list.some((tr) => tr.mode === "showing"), () => list.forEach((tr) => (tr.mode = "disabled")));
+    list.forEach((tr, i) =>
+      add(tr.label || `Pista ${i + 1}`, tr.mode === "showing", () =>
+        list.forEach((x) => (x.mode = x === tr ? "showing" : "disabled"))
+      )
+    );
+  };
+  video.textTracks.addEventListener("addtrack", () => setTimeout(syncCcBtn, 50));
+  video.textTracks.addEventListener("change", syncCcBtn);
+  ccBtn.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    togglePop(ccPop);
+  });
+  speedBtn.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    togglePop(speedPop);
+  });
+  speedPop.querySelectorAll("button").forEach((b) =>
+    b.addEventListener("click", () => {
+      video.playbackRate = +b.dataset.rate;
+      speedBtn.textContent = b.dataset.rate === "1" ? "1×" : `${b.dataset.rate}×`;
+      speedPop.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
+      speedPop.classList.add("hidden");
+    })
   );
-  video.addEventListener("dblclick", () => toggleFull(video));
-  modalBody.querySelector("#v-full")?.addEventListener("click", () => toggleFull(video));
-  modalBody.querySelector("#v-pip")?.addEventListener("click", async () => {
+  [ccPop, speedPop].forEach((p) => p.addEventListener("click", (ev) => ev.stopPropagation()));
+  const outside = () => closePops(null);
+  document.addEventListener("click", outside);
+  ctx.onStop.push(() => document.removeEventListener("click", outside));
+
+  // PiP + ecran complet (pe tot stratul cinema, ca și comenzile să rămână vizibile)
+  q("v-full").addEventListener("click", () => toggleFull());
+  q("v-pip").addEventListener("click", async () => {
     try {
       if (document.pictureInPictureElement) await document.exitPictureInPicture();
       else await video.requestPictureInPicture();
@@ -2055,31 +2454,50 @@ function enhanceVideo(video) {
     }
   });
   document.addEventListener("keydown", playerKeysHandler);
+  syncPlay();
+  syncTime();
 }
 
-function toggleFull(video) {
-  if (document.fullscreenElement) document.exitFullscreen();
-  else video.requestFullscreen?.();
+function toggleFull() {
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  else (cinemaOpen() ? cinema : $("#video"))?.requestFullscreen?.().catch(() => {});
 }
+document.addEventListener("fullscreenchange", () => {
+  const b = $("#v-full");
+  if (b) b.innerHTML = svg(document.fullscreenElement ? I.unfull : I.full, 24);
+});
 
 function playerKeysHandler(e) {
-  const video = modalBody.querySelector("#video");
-  if (!video || modal.classList.contains("hidden")) return;
+  const video = $("#video");
+  if (!video || !cinemaOpen()) return;
   if (e.ctrlKey || e.metaKey || e.altKey) return;
-  const tag = (e.target.tagName || "").toUpperCase();
-  if (["INPUT", "SELECT", "TEXTAREA", "BUTTON", "VIDEO"].includes(tag)) return; // altfel acțiune dublă
-  if (e.target.getAttribute && e.target.getAttribute("role") === "button") return;
-  if (e.key === " " || e.key.toLowerCase() === "k") {
+  const t = e.target;
+  const tag = (t.tagName || "").toUpperCase();
+  if (["INPUT", "SELECT", "TEXTAREA"].includes(tag) && t.id !== "c-vol") return;
+  // butoanele din afara barei de control (panou, listă) își păstrează Space/Enter
+  if ((tag === "BUTTON" || (t.getAttribute && t.getAttribute("role") === "button")) && !t.closest(".cin-controls")) return;
+  const k = e.key.toLowerCase();
+  if (e.key === " " || k === "k") {
     e.preventDefault();
-    video.paused ? video.play() : video.pause();
+    video.paused ? video.play().catch(() => {}) : video.pause();
   } else if (e.key === "ArrowRight") {
+    e.preventDefault();
     video.currentTime = Math.min(video.duration || 1e9, video.currentTime + 10);
   } else if (e.key === "ArrowLeft") {
+    e.preventDefault();
     video.currentTime = Math.max(0, video.currentTime - 10);
-  } else if (e.key.toLowerCase() === "f") {
-    toggleFull(video);
-  } else if (e.key.toLowerCase() === "m") {
+  } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+    e.preventDefault();
+    video.muted = false;
+    video.volume = Math.min(1, Math.max(0, video.volume + (e.key === "ArrowUp" ? 0.1 : -0.1)));
+  } else if (k === "f") {
+    toggleFull();
+  } else if (k === "m") {
     video.muted = !video.muted;
+  } else if (k === "n") {
+    $("#c-next:not(.hidden)")?.click();
+  } else if (k === "p") {
+    $("#c-prev:not(.hidden)")?.click();
   }
 }
 

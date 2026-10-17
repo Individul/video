@@ -219,6 +219,14 @@ class DropBody(BaseModel):
     hash: str = Field(min_length=40, max_length=64)
 
 
+@router.get("/torrents/stats/{torrent_hash}")
+async def torrents_stats(torrent_hash: str) -> dict[str, Any]:
+    try:
+        return await torrent_service.torrent_stats(torrent_hash)
+    except SourceError as e:
+        raise HTTPException(status_code=400 if "invalid" in str(e) else 502, detail=str(e)) from e
+
+
 @router.post("/torrents/drop")
 async def torrents_drop(body: DropBody) -> dict[str, str]:
     """Deconectează un torrent care nu se mai redă (rămâne în cache, nu mai descarcă)."""
