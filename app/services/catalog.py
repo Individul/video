@@ -25,8 +25,30 @@ async def upsert_search_hit(session: AsyncSession, hit: SearchHit) -> Title:
     return title
 
 
+async def upsert_episodes(session: AsyncSession, title_id: int, eps: list) -> None:
+    """Adaugă episoadele noi și completează nume/imagine pentru cele existente."""
+    existing: dict[tuple[int, int], Episode] = {
+        (e.season, e.episode): e
+        for e in (await session.scalars(
+            select(Episode).where(Episode.title_id == title_id)
+        )).all()
+    }
+    for ep in eps:
+        row = existing.get((ep.season, ep.episode))
+        if row is None:
+            session.add(
+                Episode(title_id=title_id, season=ep.season, episode=ep.episode,
+                        name=ep.name, still=ep.still)
+            )
+        else:
+            if ep.name and not row.name:
+                row.name = ep.name
+            if ep.still and not row.still:
+                row.still = ep.still
+
+
 async def upsert_title_detail(session: AsyncSession, detail: TitleDetail) -> Title:
-    """Upsert complet: campuri + episoade."""
+    """Upsert complet: campuri + sezoane (+ episoade, dacă vin în detaliu)."""
     q = select(Title).where(Title.source == detail.source, Title.source_url == detail.source_url)
     title = (await session.scalars(q)).first()
     if title is None:
@@ -44,29 +66,18 @@ async def upsert_title_detail(session: AsyncSession, detail: TitleDetail) -> Tit
         title.title_type = TitleType(detail.title_type)
     title.detail_loaded_at = utcnow()
     title.extra = json.dumps(
-        {"trailer": detail.trailer, "cast": detail.cast, "similar": detail.similar},
+        {
+            "trailer": detail.trailer,
+            "cast": detail.cast,
+            "similar": detail.similar,
+            "seasons": detail.seasons,
+        },
         ensure_ascii=False,
     )
 
-    # episoade (adaugă cele noi, completează nume/imagine pentru cele vechi)
-    existing_eps: dict[tuple[int, int], Episode] = {
-        (e.season, e.episode): e
-        for e in (await session.scalars(
-            select(Episode).where(Episode.title_id == title.id)
-        )).all()
-    }
-    for ep in detail.episodes:
-        row = existing_eps.get((ep.season, ep.episode))
-        if row is None:
-            session.add(
-                Episode(title_id=title.id, season=ep.season, episode=ep.episode,
-                        name=ep.name, still=ep.still)
-            )
-        else:
-            if ep.name and not row.name:
-                row.name = ep.name
-            if ep.still and not row.still:
-                row.still = ep.still
+    if detail.episodes:
+        await session.flush()  # aloca id-ul titlului nou înainte de episoade
+        await upsert_episodes(session, title.id, detail.episodes)
 
     await session.flush()
     return title

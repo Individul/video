@@ -106,6 +106,7 @@ def _title_to_dict(t: Title, with_details: bool = False) -> dict[str, Any]:
         d["trailer"] = extra.get("trailer")
         d["cast"] = extra.get("cast") or []
         d["similar"] = extra.get("similar") or []
+        d["seasons"] = extra.get("seasons") or []
     return d
 
 
@@ -345,17 +346,16 @@ async def _refresh_if_stale(db: AsyncSession, title: Title) -> Title:
     fresh = (
         loaded is not None
         and datetime.now(UTC) - loaded < timedelta(hours=Config.DETAIL_CACHE_HOURS)
-        # rânduri vechi (înainte de extras): mai au o reîmprospătare de prins
         and title.extra is not None
     )
-    # serial cu episoade dar fără nume (detalii vechi) -> completăm o dată
-    if (
-        fresh
-        and title.title_type == TitleType.SERIES
-        and title.episodes
-        and not any(e.name for e in title.episodes)
-    ):
-        fresh = False
+    if fresh and title.title_type == TitleType.SERIES:
+        # seriale vechi (înainte de încărcarea leneșă) -> o singură reîmprospătare rapidă
+        try:
+            extra = json.loads(title.extra) if title.extra else {}
+        except (TypeError, ValueError):
+            extra = {}
+        if not extra.get("seasons"):
+            fresh = False
     if fresh or not title.source_url:
         return title
     try:
@@ -384,6 +384,31 @@ async def title_detail(
         raise HTTPException(status_code=404, detail="Titlul nu exista")
     title = await _refresh_if_stale(db, title)
     return _title_to_dict(title, with_details=True)
+
+
+@router.get("/title/{title_id}/episodes")
+async def title_episodes(
+    title_id: int,
+    season: int = Query(ge=0),
+    db: AsyncSession = Depends(get_session),
+) -> list[dict[str, Any]]:
+    """Episoadele unui sezon (încărcare leneșă, cu cache în DB)."""
+    title = await catalog.get_title(db, title_id)
+    if title is None:
+        raise HTTPException(status_code=404, detail="Titlul nu exista")
+    source = _source_for(title)
+    if not hasattr(source, "season_episodes"):
+        raise HTTPException(status_code=400, detail="Sursa nu suportă episoade per sezon")
+    try:
+        eps = await asyncio.to_thread(source.season_episodes, title.source_url, season)
+    except SourceError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    await catalog.upsert_episodes(db, title.id, eps)
+    await db.commit()
+    return sorted(
+        ({"season": e.season, "episode": e.episode, "name": e.name, "still": e.still} for e in eps),
+        key=lambda e: (e["season"], e["episode"]),
+    )
 
 
 # ----------------- watchlist -----------------

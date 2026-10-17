@@ -28,6 +28,9 @@
 }
 .eps-more-wrap { display: flex; justify-content: center; margin: 0 1.8rem 0.8rem; }
 
+/* următorul episod, la finalul celui curent */
+.next-ep { display: flex; justify-content: center; margin: 0.6rem 0; }
+
 /* ---------- trailer embed în modal ---------- */
 .trailer-wrap {
   aspect-ratio: 16 / 9;

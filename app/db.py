@@ -1,9 +1,12 @@
+import sqlite3
 from collections.abc import AsyncIterator
+from datetime import datetime
+from pathlib import Path
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.config import Config
+from app.config import ROOT, Config
 from app.models import Base
 
 engine = create_async_engine(Config.DB_URL, echo=False)
@@ -36,7 +39,33 @@ async def _migrate(conn) -> None:
     )
 
 
+def _backup_sqlite() -> None:
+    """Copie de siguranță a bazei la fiecare pornire (păstrăm ultimele 7)."""
+    url = Config.DB_URL
+    if "///" not in url or not url.startswith("sqlite"):
+        return
+    path = url.split("///", 1)[1]
+    if not path or not Path(path).is_file():
+        return  # prima pornire — nu există încă bază
+    backups = ROOT / "backups"
+    backups.mkdir(exist_ok=True)
+    dest = backups / f"vid-{datetime.now().strftime('%Y%m%d-%H%M%S')}.db"
+    try:
+        src = sqlite3.connect(path)
+        dst = sqlite3.connect(dest)
+        with dst:
+            src.backup(dst)
+        src.close()
+        dst.close()
+        olds = sorted(backups.glob("vid-*.db"), key=lambda p: p.stat().st_mtime, reverse=True)
+        for old in olds[7:]:
+            old.unlink()
+    except Exception:  # noqa: BLE001 — backup-ul nu trebuie să blocheze pornirea
+        pass
+
+
 async def init_db() -> None:
+    _backup_sqlite()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await _migrate(conn)

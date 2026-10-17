@@ -8,10 +8,11 @@ vid.db
 # cookie-uri de sesiune exportate (secrete — nu intra in git)
 *_cookies.txt
 
-# date locale generate: config TorrServer + log-uri + cache subtitrări
+# date locale generate: config TorrServer + log-uri + cache subtitrări + backup-uri
 config.db
 settings.json
 subs/
+backups/
 *.log
 
 # binare si unelte externe

@@ -693,6 +693,7 @@ function chipsHtml(t) {
 }
 
 function renderModal(t, opts = {}) {
+  epsBySeason = {}; // cache episoade per titlu deschis
   const isSeries = t.type === "series";
   const inWl = state.watchlist.has(t.id);
 
@@ -894,84 +895,98 @@ function renderInfoTab(t) {
   if (row) similar.forEach((h) => row.appendChild(cardEl(h)));
 }
 
-/* ---------- tab Episoade: grid cu thumbs + progres ---------- */
+/* ---------- tab Episoade: sezoane din TMDB, episoade încărcate leneș per sezon ---------- */
+let epsBySeason = {}; // season -> [episoade] (pentru „Urmează")
+
 async function renderEpisodesTab(t) {
   const panel = modalBody.querySelector("#tab-eps");
   if (!panel) return;
-  panel.innerHTML = `<div class="status">Se încarcă episoadele...</div>`;
+  panel.innerHTML = `<div class="status">Se încarcă sezoanele...</div>`;
   let hist = [];
   try {
     hist = await api(`/api/title/${t.id}/history`);
   } catch (_) {}
   const byEp = new Map(hist.map((h) => [`${h.season}x${h.episode}`, h]));
 
-  const seasons = [...new Set((t.episodes || []).map((e) => e.season))].sort((a, b) => a - b);
+  // sezoanele: din TMDB (t.seasons) sau din episoadele deja în DB (fallback)
+  let seasons = (t.seasons || []).map((s) => s.season).filter((s) => s != null);
+  if (!seasons.length) seasons = [...new Set((t.episodes || []).map((e) => e.season))].sort((a, b) => a - b);
   if (!seasons.length) {
-    panel.innerHTML = `<div class="status">Niciun episod găsit.</div>`;
+    panel.innerHTML = `<div class="status">Niciun sezon găsit.</div>`;
     return;
   }
+  const initialSeason = seasons.includes(1) ? 1 : seasons[seasons.length - 1];
   panel.innerHTML = `
     <div class="season-chips" id="season-chips">
-      ${seasons.map((s, i) => `<button data-s="${s}" class="${i === 0 ? "on" : ""}">Sezonul ${s}</button>`).join("")}
+      ${seasons.map((s) => `<button data-s="${s}" class="${s === initialSeason ? "on" : ""}">Sezonul ${s}</button>`).join("")}
     </div>
     <div class="eps-grid" id="eps-grid"></div>`;
 
   const grid = panel.querySelector("#eps-grid");
   const CHUNK = 24;
-  const shown = { count: CHUNK };
-  function showSeason(s) {
-    grid.innerHTML = "";
-    shown.count = CHUNK;
-    const eps = (t.episodes || []).filter((e) => e.season === s);
-    renderEps(eps, s);
-  }
-  function renderEps(eps, s) {
-    const slice = eps.slice(0, shown.count);
-    slice.forEach((e) => {
-      const h = byEp.get(`${e.season}x${e.episode}`);
-      let watched = "";
-      if (h && h.duration_seconds) {
-        const pct = Math.min(100, Math.round((h.position_seconds / h.duration_seconds) * 100));
-        watched = pct >= 92 ? `<div class="ep-done">${svg(I.check, 14)} văzut</div>` : `<div class="ep-progress"><i style="width:${pct}%"></i></div>`;
+
+  async function loadSeason(s) {
+    if (!epsBySeason[s]) {
+      grid.innerHTML = `<div class="status">Se încarcă sezonul ${s}...</div>`;
+      try {
+        epsBySeason[s] = await api(`/api/title/${t.id}/episodes?season=${s}`);
+      } catch (_) {
+        epsBySeason[s] = (t.episodes || []).filter((e) => e.season === s); // fallback din DB
       }
-      const el = document.createElement("div");
-      el.className = "ep-card";
-      el.innerHTML = `
-        <div class="ep-thumb">
-          ${e.still ? `<img loading="lazy" src="${escUrl(e.still)}">` : `<div class="noimg">S${e.season}E${e.episode}</div>`}
-          <div class="ep-play">${svg(I.play, 26)}</div>
-          ${watched}
-        </div>
-        <div class="ep-name">${e.episode}. ${esc(e.name || "Episodul " + e.episode)}</div>`;
-      el.addEventListener("click", () => playEpisode(t, e.season, e.episode));
-      grid.appendChild(el);
-    });
-    // buton „arată mai multe" dacă sezonul e lung
-    let moreWrap = panel.querySelector("#eps-more-wrap");
-    if (moreWrap) moreWrap.remove();
-    const remaining = eps.length - shown.count;
-    if (remaining > 0) {
-      moreWrap = document.createElement("div");
-      moreWrap.id = "eps-more-wrap";
-      moreWrap.className = "eps-more-wrap";
-      moreWrap.innerHTML = `<button class="btn ghost">Arată mai multe (încă ${remaining})</button>`;
-      moreWrap.querySelector("button").addEventListener("click", () => {
-        shown.count += CHUNK;
-        grid.innerHTML = "";
-        renderEps(eps, s);
-        setTimeout(updateModalFade, 250);
-      });
-      grid.after(moreWrap);
     }
-    setTimeout(updateModalFade, 250);
+    renderSeason(epsBySeason[s] || [], s);
   }
+
+  function renderSeason(eps, s) {
+    const shown = { count: CHUNK };
+    const draw = () => {
+      grid.innerHTML = "";
+      eps.slice(0, shown.count).forEach((e) => {
+        const h = byEp.get(`${e.season}x${e.episode}`);
+        let watched = "";
+        if (h && h.duration_seconds) {
+          const pct = Math.min(100, Math.round((h.position_seconds / h.duration_seconds) * 100));
+          watched = pct >= 92 ? `<div class="ep-done">${svg(I.check, 14)} văzut</div>` : `<div class="ep-progress"><i style="width:${pct}%"></i></div>`;
+        }
+        const el = document.createElement("div");
+        el.className = "ep-card";
+        el.innerHTML = `
+          <div class="ep-thumb">
+            ${e.still ? `<img loading="lazy" src="${escUrl(e.still)}">` : `<div class="noimg">S${e.season}E${e.episode}</div>`}
+            <div class="ep-play">${svg(I.play, 26)}</div>
+            ${watched}
+          </div>
+          <div class="ep-name">${e.episode}. ${esc(e.name || "Episodul " + e.episode)}</div>`;
+        el.addEventListener("click", () => playEpisode(t, e.season, e.episode));
+        grid.appendChild(el);
+      });
+      let moreWrap = panel.querySelector("#eps-more-wrap");
+      if (moreWrap) moreWrap.remove();
+      const remaining = eps.length - shown.count;
+      if (remaining > 0) {
+        moreWrap = document.createElement("div");
+        moreWrap.id = "eps-more-wrap";
+        moreWrap.className = "eps-more-wrap";
+        moreWrap.innerHTML = `<button class="btn ghost">Arată mai multe (încă ${remaining})</button>`;
+        moreWrap.querySelector("button").addEventListener("click", () => {
+          shown.count += CHUNK;
+          draw();
+          setTimeout(updateModalFade, 250);
+        });
+        grid.after(moreWrap);
+      }
+      setTimeout(updateModalFade, 250);
+    };
+    draw();
+  }
+
   panel.querySelectorAll("#season-chips button").forEach((b) =>
     b.addEventListener("click", () => {
       panel.querySelectorAll("#season-chips button").forEach((x) => x.classList.toggle("on", x === b));
-      showSeason(+b.dataset.s);
+      loadSeason(+b.dataset.s);
     })
   );
-  showSeason(seasons[0]);
+  loadSeason(initialSeason);
 }
 
 /* ================= TORRENȚI + PLAYER ================= */
@@ -1189,6 +1204,29 @@ function renderPlayer(t, source, data, { season = null, episode = null, seekTo =
     }
   }
   trackProgress(video, t, s, e);
+
+  // la final de episod: marchează-l văzut și oferă următorul
+  if (s != null && e != null) {
+    video.addEventListener("ended", () => {
+      api("/api/history", {
+        method: "POST",
+        body: JSON.stringify({
+          title_id: t.id, season: s, episode: e,
+          position_seconds: video.duration || 1, duration_seconds: video.duration || null,
+        }),
+      }).catch(() => {});
+      const next = (epsBySeason[s] || []).find((x) => x.episode === e + 1);
+      if (!next) return;
+      let ov = playerBox.querySelector(".next-ep");
+      if (ov) ov.remove();
+      ov = document.createElement("div");
+      ov.className = "next-ep";
+      ov.innerHTML = `<button class="btn">▶ Urmează: ${e + 1}. ${esc(next.name || "episodul")}</button>`;
+      ov.querySelector("button").addEventListener("click", () => playEpisode(t, s, e + 1));
+      playerBox.prepend(ov);
+      ov.scrollIntoView({ block: "center" });
+    });
+  }
 
   // subtitrări: 1) dublaj RU -> nu-i nevoie  2) .srt din arhivă  3) mux MKV cu progres  4) externă
   attachSubtitles(video, t, data, s, e, source || {});

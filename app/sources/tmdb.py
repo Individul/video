@@ -199,26 +199,13 @@ class TmdbSource(BaseSource):
         path = f"/tv/{tmdb_id}" if is_tv else f"/movie/{tmdb_id}"
         data = _get(path, append_to_response="external_ids" if is_tv else "release_dates")
 
-        episodes: list[EpisodeInfo] = []
+        # doar lista sezoanelor; episoadele se încarcă leneș, per sezon (vezi season_episodes)
+        seasons: list[dict] = []
         if is_tv:
             for season in data.get("seasons", []):
                 n = season.get("season_number")
-                if n is None or not season.get("episode_count"):
-                    continue
-                try:
-                    season_data = _get(f"/tv/{tmdb_id}/season/{n}")
-                except Exception:  # noqa: BLE001 — sezonul poate lipsi
-                    continue
-                for ep in season_data.get("episodes", []):
-                    if ep.get("episode_number"):
-                        episodes.append(
-                            EpisodeInfo(
-                                n,
-                                ep["episode_number"],
-                                name=ep.get("name"),
-                                still=_poster(ep.get("still_path"), base="https://image.tmdb.org/t/p/w300"),
-                            )
-                        )
+                if n is not None:
+                    seasons.append({"season": n, "episodes": season.get("episode_count") or 0})
 
         name = data.get("name") or data.get("title") or "?"
         year_s = (data.get("first_air_date") or data.get("release_date") or "")[:4]
@@ -234,8 +221,30 @@ class TmdbSource(BaseSource):
             poster=_poster(data.get("poster_path")),
             description=data.get("overview") or None,
             rating=data.get("vote_average"),
-            episodes=episodes,
             trailer=self._trailer(media_type, tmdb_id),
             cast=self._cast(media_type, tmdb_id),
             similar=self._similar(media_type, tmdb_id),
+            seasons=seasons,
         )
+
+    def season_episodes(self, source_url: str, season: int) -> list[EpisodeInfo]:
+        """Episoadele unui singur sezon — încărcare la cerere din gridul de episoade."""
+        m = _URL_RE.search(source_url)
+        if not m:
+            raise SourceError(f"URL TMDB nerecunoscut: {source_url}")
+        media_type, tmdb_id = m.group(1), m.group(2)
+        if media_type != "tv":
+            return []
+        data = _get(f"/tv/{tmdb_id}/season/{season}")
+        out: list[EpisodeInfo] = []
+        for ep in data.get("episodes", []):
+            if ep.get("episode_number"):
+                out.append(
+                    EpisodeInfo(
+                        season,
+                        ep["episode_number"],
+                        name=ep.get("name"),
+                        still=_poster(ep.get("still_path"), base="https://image.tmdb.org/t/p/w300"),
+                    )
+                )
+        return out

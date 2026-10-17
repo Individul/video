@@ -47,6 +47,7 @@ class TitleDetail:
     trailer: str | None = None  # URL YouTube
     cast: list[dict] = field(default_factory=list)  # {name, character, profile}
     similar: list[dict] = field(default_factory=list)  # hit-uri {source, name, source_url, ...}
+    seasons: list[dict] = field(default_factory=list)  # [{season, episodes}] — încărcare leneșă
 
 
 class BaseSource(ABC):
