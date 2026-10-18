@@ -1,73 +1,99 @@
-# Cinema — agregator filme & seriale (TMDB + TorrServer)
+# Cinema — portal personal de filme, seriale și sport
 
-Aplicatie **locala, personala** (FastAPI + SQLite + UI web): catalog de filme/seriale cu
-descrieri in **rusa** de la TMDB, cautare, browsare, watchlist, istoric ("continua de unde
-ai ramas") si **redare prin torrenti** cu TorrServer (dublaj voiceover rusesc din riple-urile
-publice).
+Portal web **personal** (un singur utilizator, cu parolă): catalog de filme și seriale de la TMDB cu
+descrieri în **rusă**, redare prin torrente cu TorrServer direct în browser, sport (RGFootball) și
+transmisii live prin Ace Stream. Rulează 24/7 pe un VPS, în Docker, în spatele lui Caddy (HTTPS).
 
-## Arhitectura (simpla si stabila)
-| Componenta | Rol | Anti-bot? |
-|------------|-----|-----------|
-| **TMDB**   | catalog: cautare, detalii, postere, descrieri ru-RU | nu (API oficial, gratuita) |
-| **Rutor**  | cautare magneți după titlu (+an) | nu |
-| **TorrServer** | streaming torrent local (instalat de tine) | - |
+> Ramura **`vps`** e versiunea de pe server. Ramura `main` e versiunea veche, locală (Windows).
+> Instalarea și întreținerea serverului: **[README-WEB.md](README-WEB.md)**.
 
-## Instalare + configurare
-1. `python -m venv .venv` ; `.\.venv\Scripts\python.exe -m pip install -r requirements.txt`
-2. **TMDB key** (gratuit): cont pe themoviedb.org → Settings → API → copiaza cheia v3
-   → pun-o in `.env`: `TMDB_API_KEY=...`
-3. **TorrServer**: descarca `TorrServer.exe` (github.com/YouROK/TorrServer/releases) si porneste
-   dublu-click (port 8090). Portul se poate schimba in `.env` (TORRSERVER_URL).
-4. Porneste serverul: `.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000`
-   → http://localhost:8000
+## Ce face
 
-## Utilizare
-- cauti titlul (in rusa sau engleza) → detalii cu descriere ru-RU
-- „Caută magneți (RU)" → lista de release-uri cu dimensiune + seederi
-- ▶ pe un magneț → TorrServer il indexeaza si difuzeaza direct in player-ul din modala
-  (primul pornire poate dura pana la primul chunk; seek merge, istoricul salveaza pozitia)
+- **Catalog**: Filme, Seriale, Desene animate, Anime — filtre gen/an/sortare, căutare, pagini de actori.
+- **Detalii titlu**: descriere, distribuție, trailer, titluri similare, episoade cu miniaturi și progres;
+  rating Kinopoisk + IMDb (opțional, cu `KP_API_KEY`).
+- **Redare**: alegere automată a release-ului (preferă 1080p H.264 pentru browser; 4K/HEVC rămân în listă),
+  potrivire automată a episodului din pachete, reluare de unde ai rămas.
+- **Modul cinema**: player pe toată fereastra cu panouri pentru versiuni, episoade și starea torrentului
+  (peers, viteză, cât e încărcat în avans); subtitrări din torrent (.srt) sau extrase din MKV.
+- **Sport**: ultimele apariții RGFootball (fără secțiunile VIP).
+- **Live**: transmisii Ace Stream după ID-urile `acestream://…` aduse de utilizator; canale salvate.
+- **Calendar**: aparițiile viitoare (filme și episoade noi).
+- **Torrente**: căutare directă în toate sursele, pentru orice release.
+- **Watchlist**, **Continuă** (istoric), **Descărcări** (cache-ul TorrServer).
 
-## API
-- `GET /api/health` — status
-- `GET /api/search?q=` — cautare TMDB (ru-RU)
-- `GET /api/browse?category=films|series&page=&genre=&year=&sort=` — TMDB cu filtre
-- `GET /api/genres?category=` — lista de genuri TMDB
-- `GET /api/title/{id}` — detalii TMDB (+sezoane/episoade, trailer, distribuție, similare)
-- `GET /api/title/{id}/history` — progres per episod
-- `GET /api/torrents?q=&year=&alt=` — magneți (Jackett→Rutor→BTDig), scor + badge calitate, fallback pe numele alternativ
-- `POST /api/torrents/play {source, index, season?, episode?}` — TorrServer → {stream_url, files}; cu sezon/episod alege fișierul potrivit
-- `GET /api/downloads` + `DELETE /api/downloads/{hash}` — cache TorrServer (listă/golire)
-- `POST /api/titles` — înregistrează titlu dintr-un hit (titluri similare)
-- watchlist cu status (`to_watch|watching|watched`) + istoric upsert (un rând per titlu+sezon+episod)
+## Arhitectura
 
-## Funcționalități UI
-- routing cu hash (butonul Back funcționează), skeletoane la încărcare, notificări toast
-- filtre gen/an/sortare pe paginile Filme/Seriale
-- modala de detaliu cu taburi: Redare / Episoade (grid cu miniaturi + progres) / Detalii (distribuție, trailer, titluri similare)
-- redare: film = cel mai bun release automat; serial = cauți episodul (S01E05), potrivirea fișierului din pachet e automată; resume pe episod
-- player: taste rapide (space/k, ←/→, F, M), dublu-click fullscreen, PiP, spinner buffering
-- pagina Descărcări: ce e în cache-ul TorrServer + ștergere individuală/masă
+```
+browser ──HTTPS──▶ Caddy ──▶ vid (FastAPI + SQLite, parolă)
+                     │          ├──▶ TMDB / Kinopoisk (catalog)
+                     │          ├──▶ Jackett ──▶ FlareSolverr (trackere, Cloudflare)
+                     │          ├──▶ Rutor / BTDig (magneți)
+                     │          └──▶ motorul Ace Stream (API intern)
+                     ├─/ts/stream/*──(după login)──▶ TorrServer ──▶ peers BitTorrent (6881)
+                     └─/ace/c/*─────(după login)──▶ Ace Stream ──▶ peers Ace (8621)
+```
 
-## Config (.env)
-| Variabila | Default | Descriere |
-|-----------|---------|-----------|
-| `TMDB_API_KEY` | - | cheie TMDB (obligatorie) |
-| `TMDB_LANG` | `ru-RU` | limba descrierilor |
-| `TORRSERVER_URL` | `http://127.0.0.1:8090` | adresa TorrServer |
-| `RUTOR_MIRRORS` | rutor.info/.org/.is | ordinea mirror-urilor la cautare |
-| `TORRENT_LIMIT` | `15` | nr. max de magneți listati |
+| Container | Rol | Memorie max. |
+|-----------|-----|--------------|
+| `caddy` | HTTPS (Let's Encrypt), login pentru stream-uri, fără HTTP/3 | 128 MB |
+| `vid` | portalul (API + interfață), ffmpeg pentru subtitrări | 384 MB |
+| `torrserver` | streaming torrent, cache 1 GB în RAM | 1,5 GB |
+| `jackett` | căutare pe trackere (rutracker, nnmclub, …) | 384 MB |
+| `flaresolverr` | trece de Cloudflare pentru Jackett | 768 MB |
+| `acestream` | motorul Ace Stream 3.2.11 (pachetul oficial), cache disc ≤ 300 MB | 450 MB |
+
+Spre internet sunt deschise doar 80/443 (Caddy), 6881 (TorrServer) și 8621 (Ace Stream).
+
+## Dezvoltare locală
+
+```bash
+python -m venv .venv
+.venv/Scripts/python -m pip install -r requirements.txt     # Windows
+cp .env.vps.example .env                                    # completează TMDB_API_KEY etc.
+.venv/Scripts/python -m uvicorn app.main:app --reload --port 8000
+.venv/Scripts/python -m pytest -q
+```
+
+Testele rulează fără internet (parsare pe HTML fix, logică DB în memorie). Pe server, testele nu sunt
+în imagine: `docker cp tests vid:/srv/vid/ && docker exec vid python -m pytest -q tests`
+(câteva teste de autentificare/ffmpeg pică acolo din cauza mediului de producție).
+
+## API (prefix `/api`)
+
+| Grup | Rute |
+|------|------|
+| Catalog | `GET /search`, `/browse`, `/genres`, `/title/{id}`, `/title/{id}/episodes`, `/person/{id}`, `/calendar`; `POST /titles` |
+| Torrente | `GET /torrents`, `/torrents/search`, `/torrents/stats/{hash}`; `POST /torrents/play`, `/torrents/drop` |
+| Descărcări | `GET /downloads`, `DELETE /downloads/{hash}` |
+| Subtitrări | `GET /subtitles/embed`, `/subtitles/file`, `/subtitles/mux`, `/subtitles/mux/data`; `DELETE /subtitles/mux` |
+| Sport | `GET /sport` |
+| Live | `POST /live/start`, `GET /live/m/{ih}/{sess}.m3u8`, `/live/stat/{ih}/{sess}`, `POST /live/stop/{ih}/{sess}`, `GET/POST /live/channels`, `DELETE /live/channels/{h}` |
+| Utilizator | `GET/POST /watchlist`, `DELETE /watchlist/{id}`, `GET/POST /history`, `GET /title/{id}/history` |
+| Stare | `GET /health` (200 doar cu sesiune validă — folosit de Caddy pentru stream-uri) |
+
+## Configurare (`.env`)
+
+| Variabilă | Descriere |
+|-----------|-----------|
+| `DOMAIN` | domeniu(ii) pentru HTTPS, separate prin virgulă |
+| `APP_PASSWORD`, `APP_SECRET` | parola portalului și secretul sesiunilor |
+| `TMDB_API_KEY` | cheie TMDB (obligatorie) |
+| `TORZNAB_API_KEY` | cheia API Jackett |
+| `KP_API_KEY` | opțional, kinopoiskapiunofficial.tech (rating KP + IMDb) |
+| `OS_API_KEY` | opțional, OpenSubtitles |
+| `PROXY` | opțional, dacă Rutor/BTDig blochează IP-ul serverului |
 
 ## Structura
-```
-app/  main.py, config.py, db.py, models.py
-  api/routes.py
-  services/ catalog.py, search.py
-  sources/  base.py, tmdb.py, torrents.py
-  static/   index.html, app.js, style.css
-tests/      parsare (rutor, btdig, torznab), logic DB
-```
 
-## Note
-- `pytest` ruleaza fara internet (parsare pe HTML fix, logic DB in-memory)
-- uz personal, rata limitata la surse externe
-- **publicare pe web (VPS, Docker, parolă): vezi [README-WEB.md](README-WEB.md)**
+```
+app/
+  main.py, config.py, db.py, models.py
+  api/routes.py
+  services/  catalog.py, search.py
+  sources/   tmdb.py, kinopoisk.py, torrents.py, subtitles.py, sport.py, live.py, calendar.py
+  static/    index.html, app.js, style.css
+deploy/      setup-vps.sh, secure-vps.sh, backup.sh, torrserver-watchdog.sh, acestream/Dockerfile
+tests/
+docker-compose.yml, Caddyfile, Dockerfile
+```

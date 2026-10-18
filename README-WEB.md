@@ -1,141 +1,98 @@
-# Cinema pe VPS — ghid de mutare
+# Cinema pe VPS — instalare, mutare, întreținere
 
-Totul rulează 24/7 pe VPS, în Docker: portalul, TorrServer, Jackett și FlareSolverr.
-Calculatorul de acasă nu mai e necesar.
+Totul rulează în Docker pe un VPS Ubuntu 24.04. Serverul actual: 2 vCPU, 4 GB RAM, 40 GB NVMe, 1 Gbps
+(AlexHost U2 RO). Merge și pe 1 vCPU / 1,5 GB, dar atunci micșorează cache-ul TorrServer și limitele
+de memorie din `docker-compose.yml`.
 
-```
-browser ──HTTPS──▶ Caddy ──▶ vid (portal, parolă)
-                     │
-                     └─/ts/stream/*──(doar după login)──▶ TorrServer ──▶ peers BitTorrent (port 6881)
-                                                vid ──▶ Jackett ──▶ FlareSolverr
-```
+Domeniu: un record DNS `A` (în Cloudflare: **DNS only**, nu proxied) spre IP-ul serverului.
+Al doilea domeniu din `DOMAIN` (ex. `IP-cu-liniute.sslip.io`) e o rezervă care merge fără DNS propriu.
 
-- Spre internet sunt deschise doar Caddy (80/443) și portul de peers 6881.
-- Video-ul trece prin Caddy. Caddy verifică întâi cookie-ul portalului, deci fără login nu se poate viziona nimic.
-- Interfața TorrServer nu e accesibilă din internet. Interfața Jackett se deschide doar prin tunel SSH.
-
-Gândit pentru: 1 vCPU, 1,5 GB RAM, 10 GB disc, 1 utilizator. Fiecare container are o limită de memorie, iar scriptul de instalare adaugă 1 GB swap.
-
-## 0. Înainte de cumpărare
-
-- În termenii furnizorului: **traficul lunar** inclus și dacă **P2P/BitTorrent** e permis.
-  - Un film trece de două ori prin VPS: o dată de la peers și o dată spre tine.
-- Un **domeniu** cu un record DNS `A` spre IP-ul VPS-ului, necesar pentru HTTPS.
-  - Merge și unul gratuit, de exemplu DuckDNS (`ceva.duckdns.org`).
-
-## 1. Serverul (o singură dată)
+## 1. Server nou (o singură dată)
 
 ```bash
 ssh root@IP_VPS
+apt-get update && apt-get -y install git
 git clone -b vps https://github.com/Individul/video.git /opt/vid
 cd /opt/vid
-bash deploy/setup-vps.sh      # update, swap 1 GB, Docker
-bash deploy/secure-vps.sh     # firewall + fail2ban (parola SSH rămâne activă)
-```
-
-Logarea cu parolă rămâne activă, protejată de fail2ban. Dacă vrei mai târziu SSH doar cu cheie: `KEY_ONLY=1 bash deploy/secure-vps.sh`.
-
-## 2. Configurarea
-
-```bash
-cd /opt/vid
-cp .env.vps.example .env
-nano .env        # DOMAIN, APP_PASSWORD, APP_SECRET, TMDB_API_KEY, TORZNAB_API_KEY
-chmod 600 .env
-```
-
-## 3. Datele de acasă
-
-Pe Windows, folderul `C:\Users\prisa\vid-vps\transfer\` conține deja:
-
-| În `transfer/` | Ce e | Pe VPS |
-|---|---|---|
-| `data/vid.db` | watchlist (5), istoric (26), 610 titluri | `/opt/vid/data/` |
-| `data/subs/` | subtitrări extrase din MKV | `/opt/vid/data/subs/` |
-| `torrserver/settings.json` | setări TorrServer adaptate pentru VPS: cache 96 MB în RAM, upload limitat la 1 MB/s, port 6881 | `/opt/vid/torrserver/` |
-| `torrserver/config.db` | lista torrenților TorrServer | `/opt/vid/torrserver/` |
-| `torrserver/settings.windows.json` | setările originale, doar ca referință | — |
-
-**Jackett îl copiezi tu**, pentru că fișierele lui conțin login-urile tale la trackere:
-
-1. Închide Jackett pe Windows.
-2. Copiază `C:\ProgramData\Jackett\ServerConfig.json` în `transfer\jackett\Jackett\`.
-3. Copiază și folderul `C:\ProgramData\Jackett\Indexers\` în `transfer\jackett\Jackett\`. Fișierele `.bak` nu sunt necesare.
-
-Apoi urci totul, din Git Bash pe Windows:
-
-```bash
-cd /c/Users/prisa/vid-vps/transfer
-scp -r data torrserver jackett root@IP_VPS:/opt/vid/
-```
-
-Pe VPS:
-
-```bash
-cd /opt/vid
-chown -R 1000:1000 jackett     # containerul Jackett rulează ca utilizatorul 1000
-```
-
-## 4. Pornirea
-
-```bash
-cd /opt/vid
-docker compose up -d --build
-docker compose ps              # toate „running”
-docker compose logs -f caddy   # urmărește obținerea certificatului HTTPS
-```
-
-Deschide `https://DOMENIUL-TAU` și loghează-te cu `APP_PASSWORD`.
-
-## 5. Jackett pe VPS
-
-Interfața Jackett se deschide doar prin tunel SSH. De pe Windows:
-
-```bash
-ssh -L 9117:127.0.0.1:9117 root@IP_VPS
-```
-
-Apoi deschide <http://localhost:9117> pe calculatorul tău.
-
-1. **FlareSolverr API URL** (jos, în setări): schimbă `http://127.0.0.1:8191` în `http://flaresolverr:8191` și apasă **Apply server settings**.
-2. Apasă **Test All**. Dacă un indexer cu cont (rutracker, kinozal…) dă eroare de login, reintrodu-i parola din butonul cheie.
-   - Cauza: Windows criptează parolele salvate cu chei care nu se mută pe Linux.
-3. Cheia API din colțul dreapta-sus trebuie să fie aceeași cu `TORZNAB_API_KEY` din `.env`. Dacă ai schimbat-o, actualizeaz-o și rulează `docker compose up -d`.
-
-## 6. Verificare
-
-- [ ] Login, pagina principală, căutare titlu
-- [ ] Căutare magneți (Rutor, BTDig, Jackett) la un film
-- [ ] Redare film; derulare înainte și înapoi
-- [ ] Redare episod de serial (alegerea automată a fișierului)
-- [ ] Subtitrări: din torrent (.srt) și extrase din MKV
-- [ ] Fără login: `https://DOMENIUL-TAU/ts/stream/x` trebuie să dea 401
-- [ ] `free -h` și `docker stats` arată memorie liberă când rulează un film
-
-Dacă Rutor sau BTDig nu găsesc nimic pe VPS, dar acasă merg, cel mai probabil blochează IP-urile de datacenter. Setează `PROXY` în `.env`, apoi rulează `docker compose up -d`.
-
-## 7. Întreținere
-
-```bash
-cd /opt/vid
-git pull && docker compose up -d --build      # update cod
-docker compose pull && docker compose up -d   # update imagini (TorrServer, Jackett, ...)
-docker compose logs -f vid                    # loguri portal
-docker stats                                  # memorie per container
-df -h /                                       # spațiu pe disc
-```
-
-Backup zilnic: păstrează ultimele 7 arhive în `/opt/vid/backups`.
-
-```bash
-chmod +x /opt/vid/deploy/backup.sh
+SWAP_SIZE=2G bash deploy/setup-vps.sh   # update, swap, Docker, curățare săptămânală a imaginilor
+bash deploy/secure-vps.sh               # ufw (22, 80, 443, 6881, 8621) + fail2ban
+echo '*/5 * * * * root /opt/vid/deploy/torrserver-watchdog.sh' > /etc/cron.d/torrserver-watchdog
 ln -s /opt/vid/deploy/backup.sh /etc/cron.daily/cinema-backup
 ```
 
-Descarcă din când în când arhivele acasă cu `scp root@IP_VPS:/opt/vid/backups/cinema-*.tar.gz .`. Arhivele conțin parole, așa că păstrează-le în siguranță.
+Logarea SSH cu parolă rămâne activă, protejată de fail2ban (5 încercări greșite → IP blocat 1 oră).
+SSH doar cu cheie, dacă vrei vreodată: `KEY_ONLY=1 bash deploy/secure-vps.sh`.
 
-Dacă `dmesg | grep -i oom` arată containere oprite din lipsă de memorie, cel mai probabil e de vină FlareSolverr. Treci la un plan cu mai mult RAM: mutarea înseamnă doar să copiezi `/opt/vid`.
+## 2. Configurare
 
-## După mutare (pe Windows)
+```bash
+cd /opt/vid
+cp .env.vps.example .env && nano .env && chmod 600 .env
+```
 
-Dezactivează pornirea automată din `autostart/start_vid.bat`, care pornea TorrServer, FlareSolverr și serverul web local. Folderul `C:\Users\prisa\vid` rămâne neschimbat și poți reveni oricând la el.
+TorrServer (`torrserver/settings.json`, după prima pornire): `CacheSize` 1073741824 (1 GB),
+`ConnectionsLimit` 50, `DisableUTP` true (evită bucla de CPU), `PeersListenPort` 6881.
+
+## 3. Pornire
+
+```bash
+docker compose up -d --build
+docker builder prune -af       # cache-ul de build ocupă ~1–2 GB după fiecare --build
+docker compose ps
+docker compose logs -f caddy   # obținerea certificatului HTTPS
+```
+
+Jackett: interfața se deschide doar prin tunel SSH — `ssh -L 9117:127.0.0.1:9117 root@IP_VPS`, apoi
+<http://localhost:9117>. FlareSolverr API URL: `http://flaresolverr:8191`. Cheia API din colțul dreapta-sus
+trebuie să fie aceeași cu `TORZNAB_API_KEY` din `.env`.
+
+## 4. Mutare pe alt server
+
+Datele sunt mici (~20 MB); cache-ul Ace Stream nu se mută.
+
+1. Pe serverul nou: pașii 1 și 3 (fără `.env`, vine din copie).
+2. Copiere de pe serverul vechi pe cel nou (cu `vid` și `jackett` oprite câteva secunde, pentru o bază consistentă):
+   ```bash
+   ssh root@VECHI 'cd /opt/vid && docker compose stop vid jackett &&
+     tar czf - .env data backups jackett torrserver acestream/state; docker compose start vid jackett' \
+     | ssh root@NOU 'cd /opt/vid && tar xzf -'
+   ```
+3. Pe serverul nou: în `.env`, schimbă domeniul `…sslip.io` la noul IP; `docker compose up -d --build`.
+4. Test pe `https://IP-NOU-cu-liniute.sslip.io` (login, căutare, redare, Live).
+5. Cloudflare: recordul `A` al domeniului → IP-ul nou. Dacă Caddy a încercat certificatul înainte de
+   schimbarea DNS-ului, `docker compose restart caddy`.
+6. Pe serverul vechi: `docker compose down` și scoate fișierele din `/etc/cron.d` și `/etc/cron.daily`.
+   Prima căutare RuTracker pe serverul nou poate dura ~90 s (re-login), apoi ~2 s.
+
+## 5. Verificare
+
+- [ ] Login, catalog, căutare titlu, căutare torrente (toate trackerele apar, fără „slow”)
+- [ ] Redare film și episod de serial; derulare; subtitrări
+- [ ] Live: un ID Ace Stream pornește în ~5–30 s
+- [ ] Fără login: `/ts/stream/x` și `/ace/c/x` dau 401
+- [ ] `curl -sI https://DOMENIU | grep -i alt-svc` nu întoarce nimic (HTTP/3 e oprit)
+
+## 6. Întreținere
+
+```bash
+cd /opt/vid
+git pull && docker compose up -d --build && docker builder prune -af   # update cod
+docker compose pull && docker compose up -d                            # update imagini
+docker compose logs -f vid                                             # loguri portal
+docker stats                                                           # memorie per container
+df -h /                                                                # disc
+```
+
+Backup zilnic: ultimele 7 arhive în `/opt/vid/backups` (baza de date, TorrServer, config Jackett, `.env`).
+Descarcă-le din când în când acasă: `scp root@IP_VPS:/opt/vid/backups/cinema-*.tar.gz .` — conțin parole.
+
+## Probleme cunoscute și rezolvări
+
+| Simptom | Cauză | Rezolvare |
+|---------|-------|-----------|
+| Video lent / buffer, deși serverul e liber | HTTP/3 (QUIC/UDP) dădea ~4 Mbit/s spre client, TCP ~76 | HTTP/3 dezactivat în `Caddyfile` (`protocols h1 h2`) |
+| TorrServer la 100% CPU fără torrente | buclă internă (uTP) | `DisableUTP`, plus `torrserver-watchdog.sh` la 5 minute |
+| Live cu puțini peers | portul P2P Ace închis | 8621 publicat în compose și deschis în ufw |
+| Live cu buffer des | rezervă mică la pornire (P2P live vine doar în timp real) | player-ul așteaptă ~30 s de segmente înainte de start |
+| Discul se umple la Live | cache-ul Ace ignora limita implicită | `--disk-cache-limit` și `--live-disk-cache-size` în `deploy/acestream/Dockerfile` |
+| Disc plin după rebuild | cache-ul de build Docker | `docker builder prune -af` |
