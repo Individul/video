@@ -53,7 +53,11 @@ async function tryLogin() {
       location.reload();
       return;
     }
-    err.textContent = "Parolă greșită";
+    let msg = "Parolă greșită";
+    try {
+      msg = (await r.json()).detail || msg; // ex. „mai ai 3 încercări” / blocare temporară
+    } catch (_) {}
+    err.textContent = msg;
     err.classList.remove("hidden");
   } catch (_) {
     err.textContent = "Eroare de rețea";

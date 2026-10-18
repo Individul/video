@@ -1,11 +1,15 @@
-# Cinema pe VPS (1 vCPU / 1,5 GB RAM / 10 GB disc): portal + TorrServer + Jackett + FlareSolverr,
-# toate în rețeaua internă docker. Spre internet e expus DOAR Caddy (80/443, HTTPS automat)
-# și portul de peers al TorrServer (6881), pentru viteză la torrenți.
+# Cinema pe VPS: portal + TorrServer + Jackett + FlareSolverr + Ace Stream, toate în rețeaua
+# internă docker. Spre internet sunt expuse DOAR Caddy (80/443, HTTPS automat) și porturile de
+# peers: 6881 (TorrServer) și 8621 (Ace Stream).
 #
 # Browserul nu vorbește direct cu TorrServer: primește /ts/stream/..., iar Caddy verifică
 # întâi cookie-ul portalului (forward_auth) și abia apoi trimite cererea la TorrServer.
 #
-# Pornire: docker compose up -d --build      Date persistente: ./data ./torrserver ./jackett
+# Imaginile sunt fixate pe versiune + digest: un `docker compose pull` nu aduce nimic nou pe
+# ascuns. Actualizare voită: schimbi tag-ul/digest-ul aici (vezi README-WEB), apoi
+# `docker compose pull SERVICIU && docker compose up -d SERVICIU`; revenire = commit-ul anterior.
+#
+# Pornire: docker compose up -d --build      Date persistente: ./data ./torrserver ./jackett ./acestream
 
 x-logging: &logging
   driver: json-file
@@ -15,12 +19,11 @@ x-logging: &logging
 
 services:
   caddy:
-    image: caddy:2-alpine
+    image: caddy:2.11.7-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f
     container_name: caddy
     ports:
       - "80:80"
-      - "443:443"
-      - "443:443/udp"
+      - "443:443"            # fără 443/udp: HTTP/3 e oprit (vezi Caddyfile)
     environment:
       - DOMAIN=${DOMAIN:?seteaza DOMAIN in .env}
     volumes:
@@ -56,7 +59,7 @@ services:
     # fără ports: îl vede doar Caddy
 
   torrserver:
-    image: ghcr.io/yourok/torrserver:latest
+    image: ghcr.io/yourok/torrserver:MatriX.147@sha256:12a728d64b956b6c19f1ef4691bc4ce51372afcc758c56e73724a7a5957e2a26
     container_name: torrserver
     environment:
       - TS_PORT=8090
@@ -73,7 +76,7 @@ services:
     # 8090 NU e publicat: interfața și stream-urile se ating doar prin Caddy, după login
 
   jackett:
-    image: lscr.io/linuxserver/jackett:latest
+    image: lscr.io/linuxserver/jackett:v0.24.2867-ls8@sha256:94ee04d06870b7204533dd93da093004f70b1b33eb1cab2822b3f921fd7c4a44
     container_name: jackett
     environment:
       - PUID=1000
@@ -89,7 +92,7 @@ services:
     restart: unless-stopped
 
   flaresolverr:
-    image: ghcr.io/flaresolverr/flaresolverr:latest
+    image: ghcr.io/flaresolverr/flaresolverr:v3.5.2@sha256:c80ae007ce2ccdcd217a12426e4f039ef763ff90738c808d38810c3e59323767
     container_name: flaresolverr
     environment:
       - LOG_LEVEL=warning   # la "info" scrie în log parolele de login trimise de Jackett

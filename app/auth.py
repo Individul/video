@@ -14,6 +14,53 @@ COOKIE_NAME = "vid_auth"
 TOKEN_MAX_AGE = 30 * 24 * 3600  # o sesiune ține 30 de zile, apoi se cere din nou parola
 _last_fail = 0.0
 
+# limită de încercări: după MAX_FAILS parole greșite în FAIL_WINDOW secunde de pe același IP,
+# login-ul de pe acel IP e blocat BLOCK_SECONDS (ca fail2ban la SSH)
+MAX_FAILS = 5
+FAIL_WINDOW = 15 * 60
+BLOCK_SECONDS = 15 * 60
+_fails: dict[str, list[float]] = {}
+_blocked_until: dict[str, float] = {}
+
+
+def client_ip(request: Request) -> str:
+    """IP-ul real: portalul e doar în spatele lui Caddy, care pune IP-ul clientului ultimul
+    în X-Forwarded-For (valorile trimise de client nu pot ajunge după el)."""
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        return xff.split(",")[-1].strip()
+    return request.client.host if request.client else "?"
+
+
+def login_blocked(ip: str, now: float | None = None) -> int:
+    """Secunde rămase din blocare (0 = poate încerca)."""
+    now = time.time() if now is None else now
+    left = _blocked_until.get(ip, 0) - now
+    if left <= 0:
+        _blocked_until.pop(ip, None)
+        return 0
+    return int(left) + 1
+
+
+def register_fail(ip: str, now: float | None = None) -> int:
+    """Notează o parolă greșită; întoarce câte încercări mai are IP-ul (0 = tocmai blocat)."""
+    now = time.time() if now is None else now
+    if len(_fails) > 1000:  # memorie mărginită: aruncăm IP-urile vechi
+        for k in [k for k, v in _fails.items() if not v or now - v[-1] > FAIL_WINDOW]:
+            del _fails[k]
+    recent = [t for t in _fails.get(ip, []) if now - t < FAIL_WINDOW] + [now]
+    _fails[ip] = recent
+    if len(recent) >= MAX_FAILS:
+        _blocked_until[ip] = now + BLOCK_SECONDS
+        _fails.pop(ip, None)
+        return 0
+    return MAX_FAILS - len(recent)
+
+
+def register_ok(ip: str) -> None:
+    _fails.pop(ip, None)
+    _blocked_until.pop(ip, None)
+
 
 def _secret() -> bytes:
     # parola intră în secret: schimbarea ei invalidează toate sesiunile vechi

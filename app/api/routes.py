@@ -5,14 +5,25 @@ import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.auth import COOKIE_NAME, TOKEN_MAX_AGE, check_password, make_token, require_auth
+from app.auth import (
+    BLOCK_SECONDS,
+    COOKIE_NAME,
+    TOKEN_MAX_AGE,
+    check_password,
+    client_ip,
+    login_blocked,
+    make_token,
+    register_fail,
+    register_ok,
+    require_auth,
+)
 from app.config import Config
 from app.db import get_session
 from app.models import (
@@ -152,9 +163,24 @@ class LoginBody(BaseModel):
 
 
 @auth_router.post("/login")
-async def auth_login(body: LoginBody, response: Response) -> dict[str, Any]:
+async def auth_login(body: LoginBody, request: Request, response: Response) -> dict[str, Any]:
+    ip = client_ip(request)
+    if Config.APP_PASSWORD and (left := login_blocked(ip)):
+        raise HTTPException(
+            status_code=429,
+            detail=f"Prea multe încercări greșite. Încearcă din nou peste {max(1, round(left / 60))} min.",
+            headers={"Retry-After": str(left)},
+        )
     if not await check_password(body.password):
-        raise HTTPException(status_code=401, detail="Parolă greșită")
+        remaining = register_fail(ip)
+        if remaining == 0:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Prea multe încercări greșite. Încearcă din nou peste {BLOCK_SECONDS // 60} min.",
+                headers={"Retry-After": str(BLOCK_SECONDS)},
+            )
+        raise HTTPException(status_code=401, detail=f"Parolă greșită (mai ai {remaining} încercări)")
+    register_ok(ip)
     if Config.APP_PASSWORD:
         response.set_cookie(
             COOKIE_NAME,

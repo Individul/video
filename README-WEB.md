@@ -77,11 +77,25 @@ Datele sunt mici (~20 MB); cache-ul Ace Stream nu se mută.
 ```bash
 cd /opt/vid
 git pull && docker compose up -d --build && docker builder prune -af   # update cod
-docker compose pull && docker compose up -d                            # update imagini
 docker compose logs -f vid                                             # loguri portal
 docker stats                                                           # memorie per container
 df -h /                                                                # disc
 ```
+
+**Actualizarea imaginilor** (Caddy, TorrServer, Jackett, FlareSolverr) e voită, nu automată: în
+`docker-compose.yml` fiecare e fixată pe versiune + digest. Pentru o versiune nouă:
+
+```bash
+docker pull lscr.io/linuxserver/jackett:latest                 # exemplu
+docker image inspect lscr.io/linuxserver/jackett:latest --format '{{index .RepoDigests 0}}'
+# pune noul tag@digest în docker-compose.yml, commit, apoi:
+docker compose up -d jackett
+```
+
+Dacă ceva se strică, revii la commit-ul anterior și rulezi din nou `docker compose up -d`.
+
+**Login pe site:** după 5 parole greșite în 15 minute de pe același IP, login-ul de pe acel IP e
+blocat 15 minute (răspuns 429). Repornirea containerului `vid` șterge blocările.
 
 Backup zilnic: ultimele 7 arhive în `/opt/vid/backups` (baza de date, TorrServer, config Jackett, `.env`,
 canale Live) și o copie **criptată** în Google Drive, folderul `Cinema-backups` (ultimele 30 de zile).

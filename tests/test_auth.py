@@ -3,7 +3,10 @@ from fastapi.testclient import TestClient
 from app.main import app
 
 
-def test_fara_parola_totul_deschis():
+def test_fara_parola_totul_deschis(monkeypatch):
+    from app.config import Config
+
+    monkeypatch.setattr(Config, "APP_PASSWORD", None)  # independent de .env-ul serverului
     with TestClient(app) as c:
         assert c.get("/api/health").status_code == 200
         assert c.get("/api/auth/status").json() == {"auth_required": False}
@@ -15,6 +18,7 @@ def test_cu_parola_flux_complet(monkeypatch):
 
     monkeypatch.setattr(Config, "APP_PASSWORD", "parola-test")
     monkeypatch.setattr(Config, "APP_SECRET", "secret-test")
+    monkeypatch.delenv("HTTPS_ON", raising=False)  # cookie „secure” nu circulă pe http://testserver
 
     with TestClient(app) as c:
         # fără cookie -> 401
