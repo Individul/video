@@ -905,27 +905,69 @@ async function playLive({ name, ref }) {
   sub.textContent = "Live · Ace Stream";
 
   if (Hls) {
-    hls = new Hls({
-      liveSyncDurationCount: 5, // pornește ~25 s în urma transmisiei: rezervă pentru căderile P2P
-      maxBufferLength: 60,
-      backBufferLength: 30,
-      lowLatencyMode: false,
-      manifestLoadingMaxRetry: 30,
-      manifestLoadingRetryDelay: 2000,
-      levelLoadingMaxRetry: 10,
-      fragLoadingMaxRetry: 10,
-    });
-    hls.loadSource(sess.playlist);
-    hls.attachMedia(video);
-    hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
-    hls.on(Hls.Events.ERROR, (_, d) => {
-      if (!d.fatal || !ctx.alive) return;
-      if (d.type === Hls.ErrorTypes.MEDIA_ERROR) return hls.recoverMediaError();
-      const box = playerBox.querySelector("#video-error");
-      if (box) {
-        box.textContent = "Transmisia nu răspunde (prea puțini peers sau ID expirat). Încearcă din nou sau alt canal.";
-        box.classList.remove("hidden");
+    // După o oprire lungă sau o eroare media, hls.js „repară din mers” bufferul, iar
+    // audio-ul poate ieși dezaliniat (voce de robot). Mai sigur: reconstruim player-ul
+    // curat la poziția live (rezerva rămâne, segmentele sunt deja pe server).
+    let lastRebuild = 0;
+    const rebuild = () => {
+      if (!ctx.alive || Date.now() - lastRebuild < 15000) return;
+      lastRebuild = Date.now();
+      started = false;
+      try {
+        hls.destroy();
+      } catch (_) {}
+      attach();
+    };
+    const attach = () => {
+      hls = new Hls({
+        liveSyncDurationCount: 5, // pornește ~25 s în urma transmisiei: rezervă pentru căderile P2P
+        maxBufferLength: 60,
+        backBufferLength: 30,
+        lowLatencyMode: false,
+        manifestLoadingMaxRetry: 30,
+        manifestLoadingRetryDelay: 2000,
+        levelLoadingMaxRetry: 10,
+        fragLoadingMaxRetry: 10,
+      });
+      hls.loadSource(sess.playlist);
+      hls.attachMedia(video);
+      hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
+      hls.on(Hls.Events.ERROR, (_, d) => {
+        if (!ctx.alive) return;
+        if (d.type === Hls.ErrorTypes.MEDIA_ERROR) {
+          console.warn("live: eroare media", d.details);
+          if (d.fatal || d.details === "bufferAppendError") rebuild();
+          return;
+        }
+        if (!d.fatal) return;
+        const box = playerBox.querySelector("#video-error");
+        if (box) {
+          box.textContent = "Transmisia nu răspunde (prea puțini peers sau ID expirat). Încearcă din nou sau alt canal.";
+          box.classList.remove("hidden");
+        }
+      });
+    };
+    attach();
+    // oprire (buffer) mai lungă de 3 s → la reluare, reconstruim curat
+    let waitingSince = 0;
+    let started = false; // prima încărcare nu contează ca „buffer”
+    const onWaiting = () => {
+      if (started) waitingSince = waitingSince || Date.now();
+    };
+    const onPlaying = () => {
+      started = true;
+      const long = waitingSince && Date.now() - waitingSince > 3000;
+      waitingSince = 0;
+      if (long) {
+        console.warn("live: reconstruiesc player-ul după buffer");
+        rebuild();
       }
+    };
+    video.addEventListener("waiting", onWaiting);
+    video.addEventListener("playing", onPlaying);
+    ctx.onStop.push(() => {
+      video.removeEventListener("waiting", onWaiting);
+      video.removeEventListener("playing", onPlaying);
     });
   } else {
     video.src = sess.playlist; // Safari: HLS nativ
