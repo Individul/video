@@ -67,7 +67,7 @@ services:
     ports:
       - "6881:6881"          # peers BitTorrent (PeersListenPort din settings.json)
       - "6881:6881/udp"
-    mem_limit: 512m          # 96 MB cache + overhead
+    mem_limit: 1536m         # 1 GB cache + overhead (VPS cu 4 GB RAM)
     logging: *logging
     restart: unless-stopped
     # 8090 NU e publicat: interfața și stream-urile se ating doar prin Caddy, după login
