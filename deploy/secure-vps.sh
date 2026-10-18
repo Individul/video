@@ -39,7 +39,7 @@ CONF
   systemctl reload ssh
 fi
 
-echo "==> Firewall: SSH, HTTP/HTTPS (Caddy), 6881 (peers TorrServer)"
+echo "==> Firewall: SSH, HTTP/HTTPS (Caddy), 6881 (peers TorrServer), 8621 (peers Ace Stream)"
 ufw default deny incoming
 ufw default allow outgoing
 ufw allow OpenSSH
@@ -48,6 +48,8 @@ ufw allow 443/tcp
 ufw allow 443/udp
 ufw allow 6881/tcp
 ufw allow 6881/udp
+ufw allow 8621/tcp   # peers Ace Stream
+ufw allow 8621/udp
 ufw --force enable
 # Notă: porturile publicate de Docker ocolesc ufw — de aceea în docker-compose.yml
 # doar Caddy și 6881 sunt publice; Jackett e legat de 127.0.0.1, restul nu au porturi.

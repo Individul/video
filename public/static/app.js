@@ -872,7 +872,7 @@ async function playLive({ name, ref }) {
   let hls = null;
   if (Hls) {
     hls = new Hls({
-      liveSyncDurationCount: 3,
+      liveSyncDurationCount: 6, // ~30 s în urma transmisiei: rezervă pentru căderile P2P
       manifestLoadingMaxRetry: 30,
       manifestLoadingRetryDelay: 2000,
       levelLoadingMaxRetry: 10,

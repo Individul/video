@@ -107,7 +107,11 @@ services:
     mem_limit: 450m              # în repaus ~140 MB; limita protejează restul serverului
     logging: *logging
     restart: unless-stopped
-    # fără porturi publice: API-ul 6878 îl vede doar Caddy (după login) și portalul
+    ports:
+      # doar portul P2P (ca 6881 la TorrServer): fără el ceilalți peers nu se pot conecta la noi
+      - "8621:8621/tcp"
+      - "8621:8621/udp"
+    # API-ul 6878 rămâne intern: îl văd doar Caddy (după login) și portalul
 
 volumes:
   caddy_data:
