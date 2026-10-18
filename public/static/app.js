@@ -871,11 +871,42 @@ async function playLive({ name, ref }) {
   refreshLive();
   const statTimer = setInterval(refreshLive, 3000);
 
-  // playlist-ul apare după prebuffering: hls.js reîncearcă până e gata
   let hls = null;
+  playerCleanup = () => {
+    ctx.alive = false;
+    clearInterval(statTimer);
+    ctx.onStop.forEach((fn) => fn());
+    try {
+      if (hls) hls.destroy();
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+    } catch (_) {}
+    stopSession();
+  };
+
+  // Rezervă înainte de pornire: P2P-ul live vine doar cu viteza transmisiei, deci rezerva
+  // nu mai crește după start. Așteptăm ~30 s de segmente (ca player-ul Ace Stream local).
+  const NEED = 6;
+  const sub = $("#cin-sub");
+  const waitFrom = Date.now();
+  while (ctx.alive && Date.now() - waitFrom < 90000) {
+    let n = 0;
+    try {
+      const r = await fetch(sess.playlist, { cache: "no-store" });
+      if (r.ok) n = ((await r.text()).match(/#EXTINF/g) || []).length;
+    } catch (_) {}
+    if (!ctx.alive) return;
+    if (n >= NEED) break;
+    sub.textContent = `Live · acumulez rezervă ${Math.min(n, NEED)}/${NEED}`;
+    await new Promise((res) => setTimeout(res, 2500));
+  }
+  if (!ctx.alive) return;
+  sub.textContent = "Live · Ace Stream";
+
   if (Hls) {
     hls = new Hls({
-      liveSyncDurationCount: 6, // ~30 s în urma transmisiei: rezervă pentru căderile P2P
+      liveSyncDurationCount: 5, // pornește ~25 s în urma transmisiei: rezervă pentru căderile P2P
       maxBufferLength: 60,
       backBufferLength: 30,
       lowLatencyMode: false,
@@ -901,18 +932,6 @@ async function playLive({ name, ref }) {
   }
 
   enhanceVideo(video, { ctx });
-  playerCleanup = () => {
-    ctx.alive = false;
-    clearInterval(statTimer);
-    ctx.onStop.forEach((fn) => fn());
-    try {
-      if (hls) hls.destroy();
-      video.pause();
-      video.removeAttribute("src");
-      video.load();
-    } catch (_) {}
-    stopSession();
-  };
 }
 
 /* ================= SPORT (ultimele apariții RGFootball) ================= */
