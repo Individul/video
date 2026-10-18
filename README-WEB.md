@@ -83,8 +83,16 @@ docker stats                                                           # memorie
 df -h /                                                                # disc
 ```
 
-Backup zilnic: ultimele 7 arhive în `/opt/vid/backups` (baza de date, TorrServer, config Jackett, `.env`).
-Descarcă-le din când în când acasă: `scp root@IP_VPS:/opt/vid/backups/cinema-*.tar.gz .` — conțin parole.
+Backup zilnic: ultimele 7 arhive în `/opt/vid/backups` (baza de date, TorrServer, config Jackett, `.env`,
+canale Live) și o copie **criptată** în Google Drive, folderul `Cinema-backups` (ultimele 30 de zile).
+
+- Drive: `rclone` cu remote-ul `gdrive` (acces doar la fișierele create de el, `scope=drive.file`).
+  Autorizare pe un PC cu browser: `rclone authorize "drive" "eyJzY29wZSI6ImRyaXZlLmZpbGUifQ"`, apoi pe server
+  `rclone config create gdrive drive scope=drive.file config_refresh_token=false token='…'`. rclone-ul nou
+  scrie cheia în base64; pentru rclone 1.60 de pe server trebuie decodată la JSON-ul din câmpul `token`.
+- Parola de criptare: `/root/.cinema-backup-pass` — păstreaz-o și în managerul de parole.
+- Restaurare: `rclone copy gdrive:Cinema-backups/ARHIVA.tar.gz.enc .` apoi
+  `openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -pass file:/root/.cinema-backup-pass -in ARHIVA.tar.gz.enc | tar xz`
 
 ## Probleme cunoscute și rezolvări
 
