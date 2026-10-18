@@ -239,10 +239,6 @@ def mux_job_state(url: str, start: bool = True) -> dict:
     """Starea extragerii pentru URL; pornește jobul în fundal la prima cerere.
     Cu start=False doar raportează (cache/job existent), altfel {"status": "idle"} —
     pentru fișierele mari, unde extragerea pornește doar la cererea utilizatorului."""
-    if Config.SERVERLESS:
-        # fără proces long-running pe Vercel — frontendul cade pe subtitrările externe
-        return {"status": "error", "pct": 0,
-                "error": "extragerea din MKV e disponibilă doar local / pe VPS"}
     url = _torrserver_url(url)
     cache = _mux_cache_path(url)
     if cache.is_file() and cache.stat().st_size > 0:

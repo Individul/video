@@ -12,7 +12,6 @@ settings.json
 *.log
 *_cookies.txt
 .env
-autostart/
 tools/
 tests/
 .commandcode/

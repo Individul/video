@@ -27,7 +27,7 @@ def _warm_calendar() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
-    if Config.TMDB_API_KEY and not Config.SERVERLESS:
+    if Config.TMDB_API_KEY:
         # fir daemon: nu ține procesul (sau testele) în viață la oprire
         threading.Thread(target=_warm_calendar, daemon=True).start()
     yield

@@ -6,18 +6,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Vercel/serverless: fără disk persistent și fără ffmpeg
-SERVERLESS = os.getenv("VERCEL") == "1"
-
 # directorul de date (DB, subs, cookies) — pe VPS/Docker se punctează la volumul persisten
-ROOT = Path(os.getenv("VID_DATA_DIR", "/tmp/vid-data" if SERVERLESS else str(Path(__file__).resolve().parent.parent)))
+ROOT = Path(os.getenv("VID_DATA_DIR", str(Path(__file__).resolve().parent.parent)))
 ROOT.mkdir(parents=True, exist_ok=True)
 
 
 class Config:
     """Setari aplicatie — se pot suprascrie prin variabile de mediu / .env"""
-
-    SERVERLESS = SERVERLESS  # Vercel: fără disk persistent / ffmpeg
 
     DB_URL = os.getenv("DB_URL", f"sqlite+aiosqlite:///{ROOT / 'vid.db'}")
 

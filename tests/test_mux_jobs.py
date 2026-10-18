@@ -27,7 +27,6 @@ def jobs(monkeypatch, tmp_path):
     monkeypatch.setattr(Config, "TORRSERVER_AUTH", None)
     monkeypatch.setattr(Config, "STREAM_PROXY_PATH", None)
     monkeypatch.setattr(Config, "FFMPEG_PATH", "/usr/bin/ffmpeg")
-    monkeypatch.setattr(Config, "SERVERLESS", False)
     monkeypatch.setattr(mod, "ROOT", tmp_path)
     monkeypatch.setattr(mod, "_MUX_JOBS", {})
     # ffmpeg nu rulează în teste: jobul rămâne „running” până îl anulăm
