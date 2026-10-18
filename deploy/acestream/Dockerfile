@@ -13,7 +13,8 @@ RUN curl -fsSL -o /tmp/ace.tgz "$ACE_URL" \
     && tar xzf /tmp/ace.tgz -C /opt/acestream && rm /tmp/ace.tgz \
     && pip3 install --no-cache-dir -r requirements.txt
 EXPOSE 6878 8621
-# cache pe disc limitat la ~300 MB (implicit ar lua ~1 GB — discul VPS-ului e mic)
+# cache pe disc limitat la ~300 MB, din care live ~150 MB (implicit ar crește nelimitat — discul VPS-ului e mic)
 CMD ["/opt/acestream/start-engine", "--client-console", "--bind-all", "--http-port", "6878", \
      "--log-stdout", "--log-stdout-level", "error", "--state-dir", "/data/state", "--cache-dir", "/data/cache", \
-     "--cache-auto", "0", "--cache-max-bytes", "314572800", \n     "--live-cache-type", "disk", "--live-disk-cache-size", "157286400", "--disk-cache-limit", "314572800"]
+     "--cache-auto", "0", "--cache-max-bytes", "314572800", "--disk-cache-limit", "314572800", \
+     "--live-cache-type", "disk", "--live-disk-cache-size", "157286400"]
