@@ -60,6 +60,9 @@ class Config:
     # Developers -> API key). Cu cheie, portalul aduce automat subtitrări RU.
     OS_API_KEY = os.getenv("OS_API_KEY") or None
 
+    # Kinopoisk (kinopoiskapiunofficial.tech) — opțional: rating KP + IMDb și descrieri rusești
+    KP_API_KEY = os.getenv("KP_API_KEY") or None
+
     # ffmpeg — pentru extragerea subtitrălor muxate în MKV; se poate suprascrie cu FFMPEG_PATH
     FFMPEG_PATH = os.getenv("FFMPEG_PATH") or shutil.which("ffmpeg") or None
 

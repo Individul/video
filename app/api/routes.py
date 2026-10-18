@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -107,7 +108,27 @@ def _title_to_dict(t: Title, with_details: bool = False) -> dict[str, Any]:
         d["cast"] = extra.get("cast") or []
         d["similar"] = extra.get("similar") or []
         d["seasons"] = extra.get("seasons") or []
+        d["backdrop"] = extra.get("backdrop")
+        for key in ("tagline", "runtime", "status", "certification"):
+            d[key] = extra.get(key)
+        d["genres"] = extra.get("genres") or []
+        d["countries"] = extra.get("countries") or []
+        d["recommendations"] = extra.get("recommendations") or []
     return d
+
+
+async def _hits_with_ids(db: AsyncSession, hits: list[dict]) -> list[dict[str, Any]]:
+    """Hit-uri TMDB (similare/recomandări/filmografie) -> titluri cu id în DB, ca un clic pe
+    card să deschidă detaliile (înainte cardurile „similare” nu aveau id și dădeau eroare)."""
+    out = []
+    for h in hits:
+        try:
+            hit = SearchHit(**{k: h.get(k) for k in ("source", "name", "source_url", "poster", "year", "category", "rating")})
+        except TypeError:
+            continue
+        title = await catalog.upsert_search_hit(db, hit)
+        out.append({**_title_to_dict(title), **({"role": h["role"]} if h.get("role") else {})})
+    return out
 
 
 def _source_for(title: Title):
@@ -178,6 +199,113 @@ async def torrents_search(
         raise HTTPException(status_code=502, detail=str(e)) from e
 
 
+# ----------------- live (Ace Stream) -----------------
+
+class LiveStartBody(BaseModel):
+    ref: str = Field(min_length=10, max_length=200)  # acestream://<id>, <id>, ih:<infohash>, magnet
+
+
+class LiveChannelBody(BaseModel):
+    name: str = Field(default="", max_length=80)
+    ref: str = Field(min_length=10, max_length=200)
+
+
+def _live_err(e: Exception) -> HTTPException:
+    if isinstance(e, SourceError):
+        return HTTPException(status_code=400 if "invalid" in str(e).lower() else 502, detail=str(e))
+    return HTTPException(status_code=502, detail=f"Motorul Ace Stream nu răspunde: {e}")
+
+
+@router.post("/live/start")
+async def live_start(body: LiveStartBody) -> dict[str, Any]:
+    from app.sources import live
+
+    try:
+        kind, h = live.parse_ref(body.ref)
+        return await asyncio.to_thread(live.start, kind, h)
+    except Exception as e:  # noqa: BLE001
+        raise _live_err(e) from e
+
+
+@router.get("/live/m/{ih}/{sess}.m3u8")
+async def live_manifest(ih: str, sess: str, t: str = "r") -> Response:
+    from app.sources import live
+
+    try:
+        text = await asyncio.to_thread(live.manifest, ih, sess, t)
+    except SourceError as e:
+        # încă face prebuffering: hls.js reîncearcă
+        raise HTTPException(status_code=404 if "nu e gata" in str(e) else 400, detail=str(e)) from e
+    except Exception as e:  # noqa: BLE001
+        raise _live_err(e) from e
+    return Response(content=text, media_type="application/vnd.apple.mpegurl",
+                    headers={"Cache-Control": "no-store"})
+
+
+@router.get("/live/stat/{ih}/{sess}")
+async def live_stat(ih: str, sess: str) -> dict[str, Any]:
+    from app.sources import live
+
+    try:
+        return await asyncio.to_thread(live.stat, ih, sess)
+    except Exception as e:  # noqa: BLE001
+        raise _live_err(e) from e
+
+
+@router.post("/live/stop/{ih}/{sess}")
+async def live_stop(ih: str, sess: str) -> dict[str, str]:
+    from app.sources import live
+
+    try:
+        await asyncio.to_thread(live.stop, ih, sess)
+    except SourceError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return {"ok": "true"}
+
+
+@router.get("/live/channels")
+async def live_channels() -> list[dict[str, Any]]:
+    from app.sources import live
+
+    return live.channels()
+
+
+@router.post("/live/channels")
+async def live_channel_add(body: LiveChannelBody) -> list[dict[str, Any]]:
+    from app.sources import live
+
+    try:
+        return await asyncio.to_thread(live.save_channel, body.name, body.ref)
+    except SourceError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@router.delete("/live/channels/{h}")
+async def live_channel_delete(h: str) -> list[dict[str, Any]]:
+    from app.sources import live
+
+    return await asyncio.to_thread(live.delete_channel, h.lower())
+
+
+@router.get("/sport")
+async def sport_feed() -> dict[str, Any]:
+    """Ultimele meciuri/evenimente de pe RGFootball, grupate pe meci (pagina „Sport”)."""
+    from app.sources import sport
+
+    try:
+        return {"matches": await asyncio.to_thread(sport.feed)}
+    except SourceError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    except Exception as e:  # noqa: BLE001 — Jackett/RGFootball indisponibil
+        raise HTTPException(status_code=502, detail=f"RGFootball indisponibil: {e}") from e
+
+
+@router.get("/torrents/search")
+async def torrents_free_search(q: str = Query(min_length=2, max_length=200)) -> dict[str, Any]:
+    """Căutare liberă în toate trackerele (pagina „Torrente”), fără catalog."""
+    return await torrent_service.raw_search(q.strip())
+
+
 @router.post("/torrents/play")
 async def torrents_play(body: PlayBody) -> dict[str, Any]:
     # source = magnet str (rutor/btdig) sau randul de torrent (dict cu torrent_url, Jackett/RuTracker)
@@ -192,6 +320,28 @@ async def torrents_play(body: PlayBody) -> dict[str, Any]:
         )
     except SourceError as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
+
+
+class DropBody(BaseModel):
+    hash: str = Field(min_length=40, max_length=64)
+
+
+@router.get("/torrents/stats/{torrent_hash}")
+async def torrents_stats(torrent_hash: str) -> dict[str, Any]:
+    try:
+        return await torrent_service.torrent_stats(torrent_hash)
+    except SourceError as e:
+        raise HTTPException(status_code=400 if "invalid" in str(e) else 502, detail=str(e)) from e
+
+
+@router.post("/torrents/drop")
+async def torrents_drop(body: DropBody) -> dict[str, str]:
+    """Deconectează un torrent care nu se mai redă (rămâne în cache, nu mai descarcă)."""
+    try:
+        await torrent_service.drop_torrent(body.hash)
+    except SourceError as e:
+        raise HTTPException(status_code=400 if "invalid" in str(e) else 502, detail=str(e)) from e
+    return {"ok": "true"}
 
 
 # ----------------- TorrServer: cache-ul de descărcări -----------------
@@ -239,13 +389,24 @@ async def subtitles_file(
 
 
 @router.get("/subtitles/mux")
-async def subtitles_mux(url: str = Query(min_length=10)) -> dict[str, Any]:
-    """Starea extragerii subtitrărilor din MKV (pornește jobul în fundal la prima cerere):
-    {status: running|done|error, pct: 0-100}."""
+async def subtitles_mux(url: str = Query(min_length=10), start: bool = True) -> dict[str, Any]:
+    """Starea extragerii subtitrărilor din MKV (pornește jobul în fundal la prima cerere,
+    dacă start=1): {status: running|done|error|idle, pct: 0-100}."""
     try:
-        return await asyncio.to_thread(subtitles.mux_job_state, url)
+        return await asyncio.to_thread(subtitles.mux_job_state, url, start)
     except SourceError as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
+
+
+@router.delete("/subtitles/mux")
+async def subtitles_mux_cancel(url: str = Query(min_length=10)) -> dict[str, Any]:
+    """Oprește extragerea (player închis / altă versiune aleasă) — ffmpeg nu mai trage
+    tot fișierul prin TorrServer degeaba."""
+    try:
+        cancelled = await asyncio.to_thread(subtitles.cancel_mux_job, url)
+    except SourceError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return {"ok": True, "cancelled": cancelled}
 
 
 @router.get("/subtitles/mux/data")
@@ -348,13 +509,16 @@ async def _refresh_if_stale(db: AsyncSession, title: Title) -> Title:
         and datetime.now(UTC) - loaded < timedelta(hours=Config.DETAIL_CACHE_HOURS)
         and title.extra is not None
     )
-    if fresh and title.title_type == TitleType.SERIES:
-        # seriale vechi (înainte de încărcarea leneșă) -> o singură reîmprospătare rapidă
+    if fresh:
         try:
             extra = json.loads(title.extra) if title.extra else {}
         except (TypeError, ValueError):
             extra = {}
-        if not extra.get("seasons"):
+        # seriale vechi (înainte de încărcarea leneșă) -> o singură reîmprospătare rapidă
+        if title.title_type == TitleType.SERIES and not extra.get("seasons"):
+            fresh = False
+        # detalii salvate cu o versiune mai veche (fără fundal, slogan, genuri...) -> o reîmprospătare
+        if extra.get("v", 1) < catalog.EXTRA_VERSION:
             fresh = False
     if fresh or not title.source_url:
         return title
@@ -367,6 +531,38 @@ async def _refresh_if_stale(db: AsyncSession, title: Title) -> Title:
     # repopulam colectia episoadelor abia adaugate (session-ul o avea goala in memorie)
     await db.refresh(title, attribute_names=["episodes"])
     return title
+
+
+_KP_TTL = 7 * 86400  # ratingurile se schimbă încet; o cerere pe săptămână per titlu
+
+
+async def _ensure_kinopoisk(db: AsyncSession, title: Title) -> dict | None:
+    """Rating KP/IMDb + descriere din Kinopoisk, cache-uite în extra["kp"] (și „negăsit”,
+    ca să nu repetăm cererea). La limită depășită păstrăm ce aveam și reîncercăm altă dată."""
+    import time
+
+    from app.sources import kinopoisk
+
+    try:
+        extra = json.loads(title.extra) if title.extra else {}
+    except (TypeError, ValueError):
+        extra = {}
+    cached = extra.get("kp")
+    if not Config.KP_API_KEY or title.source != "tmdb":
+        return cached if cached and not cached.get("none") else None
+    if cached and time.time() - cached.get("at", 0) < _KP_TTL:
+        return None if cached.get("none") else cached
+    try:
+        res = await asyncio.to_thread(
+            kinopoisk.lookup, extra.get("imdb_id"), title.name, title.name_original, title.year
+        )
+    except Exception:  # noqa: BLE001 — limită/rețea: Kinopoisk e opțional, pagina merge și fără
+        return cached if cached and not cached.get("none") else None
+    fresh = {**res, "at": time.time()} if res else {"none": True, "at": time.time()}
+    extra["kp"] = fresh
+    title.extra = json.dumps(extra, ensure_ascii=False)
+    await db.commit()
+    return None if fresh.get("none") else fresh
 
 
 @router.get("/title/{title_id}")
@@ -383,7 +579,67 @@ async def title_detail(
     if title is None:
         raise HTTPException(status_code=404, detail="Titlul nu exista")
     title = await _refresh_if_stale(db, title)
-    return _title_to_dict(title, with_details=True)
+    kp = await _ensure_kinopoisk(db, title)
+    d = _title_to_dict(title, with_details=True)
+    if kp:
+        d["kp"] = {k: kp.get(k) for k in ("id", "rating_kp", "votes_kp", "rating_imdb", "votes_imdb", "url")}
+        if not d.get("description") and kp.get("description"):
+            d["description"] = kp["description"]  # TMDB n-are descriere în rusă -> cea de pe Kinopoisk
+    d["similar"] = await _hits_with_ids(db, d["similar"])
+    d["recommendations"] = await _hits_with_ids(db, d["recommendations"])
+    await db.commit()
+    return d
+
+
+@router.get("/calendar")
+async def calendar_events(
+    back: int = Query(7, ge=0, le=30),
+    ahead: int = Query(60, ge=1, le=120),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """Calendarul aparițiilor: premiere în cinema, lansări digitale, episoade noi.
+    Serialele „tale” = cele din watchlist sau din istoric (sunt marcate followed)."""
+    from app.sources import calendar as cal
+
+    rows = (
+        await db.scalars(
+            select(Title.source_url)
+            .where(Title.source == "tmdb", Title.title_type == TitleType.SERIES)
+            .where(
+                Title.id.in_(select(WatchlistItem.title_id)) | Title.id.in_(select(HistoryItem.title_id))
+            )
+        )
+    ).all()
+    followed = [int(m.group(1)) for u in rows if (m := re.search(r"/tv/(\d+)", u or ""))]
+    try:
+        events = await asyncio.to_thread(cal.calendar, back, ahead, followed)
+    except SourceError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    titles = await _hits_with_ids(db, [e["hit"] for e in events])
+    await db.commit()
+    out = []
+    for e, t in zip(events, titles):
+        e = {k: v for k, v in e.items() if k != "hit"}
+        out.append({**e, "title": t})
+    return {"today": datetime.now().date().isoformat(), "events": out}
+
+
+@router.get("/person/{person_id}")
+async def person_detail(
+    person_id: int,
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """Pagina actorului: biografie + filmografie (titluri cu id, deschise direct din grilă)."""
+    tmdb = SOURCES.get("tmdb")
+    if tmdb is None or not hasattr(tmdb, "person"):
+        raise HTTPException(status_code=400, detail="Sursa nu suportă persoane")
+    try:
+        p = await asyncio.to_thread(tmdb.person, person_id)
+    except SourceError as e:
+        raise HTTPException(status_code=404 if "nu am gasit" in str(e) else 502, detail=str(e)) from e
+    p["works"] = await _hits_with_ids(db, p["works"])
+    await db.commit()
+    return p
 
 
 @router.get("/title/{title_id}/episodes")

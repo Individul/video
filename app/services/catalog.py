@@ -6,14 +6,40 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import Episode, Title, TitleType, utcnow
 from app.sources.base import SearchHit, TitleDetail
 
+# crește când detaliile salvate primesc câmpuri noi: titlurile vechi se reîmprospătează o dată
+EXTRA_VERSION = 3  # 3: imdb_id (pentru Kinopoisk)
+
+
+async def _get_or_create_title(session: AsyncSession, source: str, source_url: str, name: str) -> Title:
+    """Titlul existent sau unul nou, sigur la cereri simultane: pagina principală încarcă
+    mai multe liste în paralel, iar același film apare în mai multe (trend + populare).
+    INSERT ... ON CONFLICT DO NOTHING evită eroarea de unicitate a celei de-a doua cereri."""
+    q = select(Title).where(Title.source == source, Title.source_url == source_url)
+    title = (await session.scalars(q)).first()
+    if title is not None:
+        return title
+    dialect = session.bind.dialect.name if session.bind is not None else ""
+    if dialect in ("sqlite", "postgresql"):
+        if dialect == "sqlite":
+            from sqlalchemy.dialects.sqlite import insert as dialect_insert
+        else:
+            from sqlalchemy.dialects.postgresql import insert as dialect_insert
+        await session.execute(
+            dialect_insert(Title)
+            .values(source=source, source_url=source_url, name=name)
+            .on_conflict_do_nothing(index_elements=["source", "source_url"])
+        )
+        title = (await session.scalars(q)).first()
+        if title is not None:
+            return title
+    title = Title(source=source, source_url=source_url, name=name)
+    session.add(title)
+    return title
+
 
 async def upsert_search_hit(session: AsyncSession, hit: SearchHit) -> Title:
     """Creeaza/actualizeaza un titlu minimal dintr-un rezultat de cautare/browsare."""
-    q = select(Title).where(Title.source == hit.source, Title.source_url == hit.source_url)
-    title = (await session.scalars(q)).first()
-    if title is None:
-        title = Title(source=hit.source, source_url=hit.source_url, name=hit.name)
-        session.add(title)
+    title = await _get_or_create_title(session, hit.source, hit.source_url, hit.name)
 
     title.name = hit.name
     title.year = hit.year or title.year
@@ -51,11 +77,7 @@ async def upsert_episodes(session: AsyncSession, title_id: int, eps: list) -> No
 
 async def upsert_title_detail(session: AsyncSession, detail: TitleDetail) -> Title:
     """Upsert complet: campuri + sezoane (+ episoade, dacă vin în detaliu)."""
-    q = select(Title).where(Title.source == detail.source, Title.source_url == detail.source_url)
-    title = (await session.scalars(q)).first()
-    if title is None:
-        title = Title(source=detail.source, source_url=detail.source_url, name=detail.name)
-        session.add(title)
+    title = await _get_or_create_title(session, detail.source, detail.source_url, detail.name)
 
     title.name = detail.name
     title.name_original = detail.name_original
@@ -67,12 +89,28 @@ async def upsert_title_detail(session: AsyncSession, detail: TitleDetail) -> Tit
     if detail.title_type:
         title.title_type = TitleType(detail.title_type)
     title.detail_loaded_at = utcnow()
+    # datele Kinopoisk (cerute separat, cu limită zilnică) supraviețuiesc reîmprospătării TMDB
+    try:
+        kept_kp = (json.loads(title.extra) if title.extra else {}).get("kp")
+    except (TypeError, ValueError):
+        kept_kp = None
     title.extra = json.dumps(
         {
             "trailer": detail.trailer,
             "cast": detail.cast,
             "similar": detail.similar,
             "seasons": detail.seasons,
+            "backdrop": detail.backdrop,
+            "tagline": detail.tagline,
+            "runtime": detail.runtime,
+            "genres": detail.genres,
+            "countries": detail.countries,
+            "status": detail.status,
+            "certification": detail.certification,
+            "recommendations": detail.recommendations,
+            "imdb_id": detail.imdb_id,
+            "v": EXTRA_VERSION,
+            **({"kp": kept_kp} if kept_kp else {}),
         },
         ensure_ascii=False,
     )

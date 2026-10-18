@@ -48,6 +48,15 @@ class TitleDetail:
     cast: list[dict] = field(default_factory=list)  # {name, character, profile}
     similar: list[dict] = field(default_factory=list)  # hit-uri {source, name, source_url, ...}
     seasons: list[dict] = field(default_factory=list)  # [{season, episodes}] — încărcare leneșă
+    backdrop: str | None = None  # imagine lată (cadru din film) pentru hero/fereastra de detalii
+    tagline: str | None = None  # sloganul filmului
+    runtime: int | None = None  # minute (film) / durata tipică a unui episod (serial)
+    genres: list[str] = field(default_factory=list)
+    countries: list[str] = field(default_factory=list)
+    status: str | None = None  # „Lansat”, „În desfășurare”, „Încheiat”...
+    certification: str | None = None  # limita de vârstă: „16+”, „R”...
+    recommendations: list[dict] = field(default_factory=list)  # hit-uri „Recomandări” (TMDB)
+    imdb_id: str | None = None  # legătura cu Kinopoisk (rating KP + IMDb)
 
 
 class BaseSource(ABC):

@@ -53,26 +53,42 @@ def quality_label(name: str) -> str | None:
     return None
 
 
+_HEVC_RE = re.compile(r"x\.?265|h\.?265|hevc")
+_HDR_RE = re.compile(r"\bhdr|dolby.?vision|\bdv\b|\bdovi\b")
+_AVC_RE = re.compile(r"x\.?264|h\.?264|\bavc\b")
+
+
 def score_torrent(item: dict, query_year: int | None = None) -> tuple[float, str | None]:
-    """Scor pentru alegerea AUTO: preferă dublaj RU + calitate bună + seederi;
-    penalizează camera (CAM), trailere, dimensiuni aberante și titlurile greșite."""
+    """Scor pentru alegerea AUTO, gândit pentru redare în browser: preferă dublaj RU,
+    apoi 1080p H.264 (debit moderat, decodat de orice browser) + seederi.
+    4K, HEVC/x265 și HDR/Dolby Vision rămân în listă, dar nu mai pornesc singure:
+    debit de 2-3 ori mai mare și decodare nesigură în browser -> buffering.
+    Penalizează camera (CAM), trailere, dimensiuni aberante și titlurile greșite."""
     name = item.get("name") or ""
     n = name.lower()
     score = 0.0
     q = quality_label(name)
-    if q == "4K":
+    if q == "1080p":
         score += 5
-    elif q == "1080p":
-        score += 4
+    elif q == "4K":
+        score += 3
     elif q == "720p":
         score += 3
     elif q == "CAM":
         score -= 25
-    if re.search(r"web-?dl|blu-?ray|remux|bdrip|bd-?rip", n):
+    if _HEVC_RE.search(n):
+        score -= 2  # Chrome/Firefox redau HEVC doar cu suport hardware, adesea deloc
+    elif _AVC_RE.search(n):
+        score += 1
+    if _HDR_RE.search(n):
+        score -= 2  # HDR/Dolby Vision: culori spălate sau ecran negru pe multe browsere
+    if "remux" in n:
+        score -= 3  # remux: debit uriaș + audio TrueHD/DTS pe care browserul nu-l redă
+    elif re.search(r"web-?dl|blu-?ray|bdrip|bd-?rip", n):
         score += 2
     elif re.search(r"webrip|hdrip|hdtv|dvdrip", n):
         score += 1
-    if _RU_AUDIO_RE.search(n):
+    if has_ru_audio(name):
         # dominant: un release cu dublaj RU bate orice release EN de calitate mai bună
         score += 12
     if re.search(r"трейлер|trailer|промо|promo\b", n):
@@ -93,8 +109,18 @@ def score_torrent(item: dict, query_year: int | None = None) -> tuple[float, str
     return round(score, 2), q
 
 
+# marcaje de tip RuTracker/Rutor pentru dublaj rusesc:
+#  „Dub (Videofilm Int.)” — „Dub” simplu înseamnă dublaj RU; „Dub (Ukr)” e ucrainean
+#  „| D |”, „| D, P, A |”, „| D | Videofilm” — litera D în lista de piste audio
+_RU_DUB_WORD_RE = re.compile(r"\bdub\b(?!\s*\(\s*(?:ukr|укр|eng|англ|kaz|каз))", re.I)
+_RU_DUB_MARK_RE = re.compile(r"[|\[]\s*(?:[A-ZА-Я]\d?\s*,\s*)*D(?:\s*,\s*[A-ZА-Я]\d?)*\s*(?=[|\]\-]|$)")
+
+
 def has_ru_audio(name: str | None) -> bool:
-    return bool(_RU_AUDIO_RE.search((name or "").lower()))
+    name = name or ""
+    return bool(
+        _RU_AUDIO_RE.search(name.lower()) or _RU_DUB_WORD_RE.search(name) or _RU_DUB_MARK_RE.search(name)
+    )
 
 
 def dedupe_results(items: list[dict]) -> list[dict]:
@@ -338,29 +364,39 @@ def _torznab_indexer_list() -> list[tuple[str, str]]:
     except Exception:  # noqa: BLE001 — cădem pe „all"
         pass
     if not out:
+        # Jackett indisponibil (ex. tocmai pornește): rezerva „all” se ține doar 30 s,
+        # nu 10 min — altfel căutările ar rămâne lente mult după ce Jackett și-a revenit
         out = [(Config.TORZNAB_INDEXER or "all", "jackett")]
+        _TORZNAB_INDEXER_CACHE, _TORZNAB_INDEXER_TS = out, _time.time() - 570
+        return out
     _TORZNAB_INDEXER_CACHE, _TORZNAB_INDEXER_TS = out, _time.time()
+    return out
+
+
+def _torznab_one(idx: tuple[str, str], query: str, limit: int, timeout: float = 25) -> list[dict]:
+    """Căutare pe un singur indexer Jackett; rezultatele poartă numele sursei."""
+    import requests
+
+    idx_id, label = idx
+    url = (
+        f"{Config.TORZNAB_URL.rstrip('/')}/api/v2.0/indexers/{idx_id}/results/torznab/api"
+        f"?apikey={Config.TORZNAB_API_KEY}&q={quote(query)}&limit={limit}"
+    )
+    r = requests.get(url, headers=_mk_headers(), timeout=timeout)
+    r.raise_for_status()
+    out = _parse_torznab(r.content)
+    for x in out:
+        x["indexer"] = label
     return out
 
 
 def _search_torznab(query: str, limit: int) -> list[dict]:
     """Interogare Torznab (Jackett) pe fiecare indexer configurat, în paralel.
     Rezultatele poartă numele sursei; un indexer lent/căzut nu blochează restul."""
-    import requests
     from concurrent.futures import ThreadPoolExecutor
 
     def _one(idx: tuple[str, str]) -> list[dict]:
-        idx_id, label = idx
-        url = (
-            f"{Config.TORZNAB_URL.rstrip('/')}/api/v2.0/indexers/{idx_id}/results/torznab/api"
-            f"?apikey={Config.TORZNAB_API_KEY}&q={quote(query)}&limit={limit}"
-        )
-        r = requests.get(url, headers=_mk_headers(), timeout=25)
-        r.raise_for_status()
-        out = _parse_torznab(r.content)
-        for x in out:
-            x["indexer"] = label
-        return out
+        return _torznab_one(idx, query, limit)
 
     results: list[dict] = []
     indexers = _torznab_indexer_list()
@@ -370,6 +406,50 @@ def _search_torznab(query: str, limit: int) -> list[dict]:
             results.extend(f.result())
     results.sort(key=lambda r: (r.get("seeds") or 0), reverse=True)
     return results
+
+
+def raw_search_sync(query: str, wait_s: float = 15.0, limit: int = 200) -> dict:
+    """Căutare liberă în toate trackerele (pagina „Torrente”), fără catalogul TMDB și
+    fără filtrul de filme: orice text, orice categorie. Sursele care nu răspund în
+    `wait_s` secunde sunt raportate ca „lente” — nu țin pe loc rezultatele celorlalte."""
+    from concurrent.futures import ThreadPoolExecutor, wait
+
+    indexers = _torznab_indexer_list() if _torznab_configured() else []
+    pool = ThreadPoolExecutor(max_workers=8)
+    jobs = {pool.submit(_torznab_one, idx, query, 100, wait_s + 5): idx[1] for idx in indexers}
+    jobs[pool.submit(_rutor_or_empty, query)] = "RuTor (direct)"
+    done, pending = wait(list(jobs), timeout=wait_s)
+    pool.shutdown(wait=False, cancel_futures=True)
+
+    results: list[dict] = []
+    failed: list[str] = []
+    for f in done:
+        try:
+            results.extend(f.result())
+        except Exception:  # noqa: BLE001 — o sursă căzută nu strică restul
+            failed.append(jobs[f])
+    slow = sorted(jobs[f] for f in pending)
+    results = dedupe_results(results)
+    for r in results:
+        q = quality_label(r.get("name") or "")
+        r["quality"] = q or ""
+        r["dub"] = "RU" if has_ru_audio(r.get("name")) else ""
+    results.sort(key=lambda r: (r.get("seeds") or 0), reverse=True)
+    return {"results": results[:limit], "slow": slow, "failed": sorted(failed)}
+
+
+def _rutor_or_empty(query: str) -> list[dict]:
+    """Rutor direct; „niciun rezultat” nu e o eroare a sursei."""
+    try:
+        return _search_mirrors(query)
+    except SourceError as e:
+        if "goale" in str(e):
+            return []
+        raise
+
+
+async def raw_search(query: str) -> dict:
+    return await asyncio.to_thread(raw_search_sync, query)
 
 
 def _try_indexer(fn, idx) -> list[dict]:
@@ -709,6 +789,7 @@ async def torrserver_play(
         ) from e
     if not files:
         raise SourceError("TorrServer nu a returnat fluxuri — torrentul nu e găsit / seed zero")
+    await asyncio.to_thread(_attach_file_sizes, h, files)
     index = max(0, min(index, max(0, len(files) - 1)))
     matched = False
     if season is not None and episode is not None:
@@ -725,6 +806,8 @@ async def torrserver_play(
         "files": [{**f, "url": ts_stream_url(f["url"])} for f in files],
         "stream_url": ts_stream_url(file["url"]),
         "index": file["index"],
+        "size": file.get("size"),  # bytes; None dacă TorrServer nu a raportat
+        "hash": h,
         "matched": matched,
     }
 
@@ -775,6 +858,72 @@ async def list_downloads() -> list[dict]:
             f"TorrServer nu raspunde la {Config.TORRSERVER_URL} ({e}). "
             "Porneste TorrServer sau ajusteaza TORRSERVER_URL in .env."
         ) from e
+
+
+async def torrent_stats(torrent_hash: str) -> dict:
+    """Starea torrentului care rulează (panoul „Stare” din player): viteză, peers,
+    cât e încărcat în avans în cache — ca să se vadă de unde vine un eventual buffering."""
+    if not _HASH_RE.match(torrent_hash or ""):
+        raise SourceError("Hash de torrent invalid")
+    try:
+        t = await asyncio.to_thread(_ts_request, "get", torrent_hash.lower()) or {}
+    except Exception as e:  # noqa: BLE001
+        raise SourceError(f"TorrServer nu răspunde ({e}).") from e
+
+    def _cache() -> dict:
+        import requests
+
+        r = requests.post(
+            f"{Config.TORRSERVER_URL}/cache", json={"action": "get", "hash": torrent_hash.lower()},
+            headers={"User-Agent": Config.USER_AGENT}, auth=ts_auth(), timeout=10,
+        )
+        r.raise_for_status()
+        return r.json() or {}
+
+    try:  # capacitatea și umplerea cache-ului vin din /cache, nu din /torrents
+        cache = await asyncio.to_thread(_cache)
+    except Exception:  # noqa: BLE001 — informație în plus, nu obligatorie
+        cache = {}
+    return {
+        "cache_capacity": cache.get("Capacity") or 0,
+        "cache_filled": cache.get("Filled") or 0,
+        "status": t.get("stat_string") or "",
+        "download_bps": int((t.get("download_speed") or 0) * 8),
+        "upload_bps": int((t.get("upload_speed") or 0) * 8),
+        "peers_active": t.get("active_peers") or 0,
+        "peers_total": t.get("total_peers") or 0,
+        "seeders": t.get("connected_seeders") or 0,
+        "preloaded": t.get("preloaded_bytes") or 0,  # cât e încărcat înaintea poziției curente
+        "read": t.get("bytes_read") or 0,
+        "size": t.get("torrent_size") or 0,
+    }
+
+
+def _attach_file_sizes(h: str, files: list[dict]) -> None:
+    """Adaugă `size` (bytes) fiecărui fișier, din file_stats-ul TorrServer (best-effort).
+    Frontendul decide după mărime dacă extrage automat subtitrările din MKV."""
+    try:
+        info = _ts_request("get", h) or {}
+        sizes = {fs.get("id"): fs.get("length") for fs in info.get("file_stats") or []}
+    except Exception:  # noqa: BLE001 — fără mărimi, frontendul tratează fișierul ca mare
+        return
+    for f in files:
+        if sizes.get(f["index"]):
+            f["size"] = sizes[f["index"]]
+
+
+_HASH_RE = re.compile(r"^[a-fA-F0-9]{40}$|^[a-fA-F0-9]{64}$")
+
+
+async def drop_torrent(torrent_hash: str) -> None:
+    """Deconectează torrentul (nu mai descarcă/urcă), dar îl păstrează în listă și în cache.
+    Folosit când închizi player-ul sau treci la altă versiune."""
+    if not _HASH_RE.match(torrent_hash or ""):
+        raise SourceError("Hash de torrent invalid")
+    try:
+        await asyncio.to_thread(_ts_request, "drop", torrent_hash.lower())
+    except Exception as e:  # noqa: BLE001
+        raise SourceError(f"TorrServer nu a putut opri torrentul ({e}).") from e
 
 
 async def remove_download(torrent_hash: str) -> None:

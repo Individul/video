@@ -163,6 +163,9 @@ def _extract_track(url: str, map_spec: str, job: dict) -> str | None:
         return None
     import time as _time
 
+    job["proc"] = proc  # cancel_mux_job îl poate opri din alt thread
+    if job.get("cancelled"):  # anulat chiar înainte de pornire
+        proc.kill()
     started = _time.monotonic()
     err_tail: list[str] = []
     try:
@@ -177,6 +180,9 @@ def _extract_track(url: str, map_spec: str, job: dict) -> str | None:
         proc.wait()
     finally:
         proc.stderr.close()  # type: ignore[union-attr]
+        job["proc"] = None
+    if job.get("cancelled"):
+        return None
     if proc.returncode != 0:
         job["error"] = "ffmpeg: " + (err_tail[-1] if err_tail else f"cod {proc.returncode}")
         return None
@@ -216,6 +222,8 @@ def _torrserver_progress(url: str) -> int | None:
 
 def _run_mux_extraction(url: str, job: dict) -> None:
     for map_spec in ("0:s:m:language:rus", "0:s:0"):
+        if job.get("cancelled"):
+            return
         vtt = _extract_track(url, map_spec, job)
         if vtt:
             _mux_cache_path(url).write_text(vtt, encoding="utf-8")
@@ -227,8 +235,10 @@ def _run_mux_extraction(url: str, job: dict) -> None:
         job["error"] = "niciun track de subtitrare găsit"
 
 
-def mux_job_state(url: str) -> dict:
-    """Starea extragerii pentru URL; pornește jobul în fundal la prima cerere."""
+def mux_job_state(url: str, start: bool = True) -> dict:
+    """Starea extragerii pentru URL; pornește jobul în fundal la prima cerere.
+    Cu start=False doar raportează (cache/job existent), altfel {"status": "idle"} —
+    pentru fișierele mari, unde extragerea pornește doar la cererea utilizatorului."""
     if Config.SERVERLESS:
         # fără proces long-running pe Vercel — frontendul cade pe subtitrările externe
         return {"status": "error", "pct": 0,
@@ -242,8 +252,14 @@ def mux_job_state(url: str) -> dict:
     key = hashlib.sha1(url.encode()).hexdigest()
     with _JOBS_LOCK:
         job = _MUX_JOBS.get(key)
+        if job is None and not start:
+            return {"status": "idle", "pct": 0, "error": None}
         if job is None:
-            job = {"state": "running", "pct": 0, "error": None}
+            # o singură extragere odată: ffmpeg citește tot fișierul, iar două în paralel
+            # (sau una rămasă de la versiunea abandonată) îi iau banda filmului care rulează
+            for other_key in [k for k, j in _MUX_JOBS.items() if j["state"] == "running"]:
+                _cancel_locked(other_key)
+            job = {"state": "running", "pct": 0, "error": None, "proc": None, "cancelled": False}
             _MUX_JOBS[key] = job
             _threading.Thread(target=_run_mux_extraction, args=(url, job), daemon=True).start()
             return {"status": job["state"], "pct": job["pct"], "error": job["error"]}
@@ -252,6 +268,29 @@ def mux_job_state(url: str) -> dict:
             if pct is not None:
                 job["pct"] = pct
         return {"status": job["state"], "pct": job["pct"], "error": job["error"]}
+
+
+def _cancel_locked(key: str) -> bool:
+    """Oprește jobul (apelat cu _JOBS_LOCK luat); îl scoate din listă ca să poată
+    fi repornit mai târziu, dacă revii la acel fișier."""
+    job = _MUX_JOBS.pop(key, None)
+    if job is None or job["state"] != "running":
+        return False
+    job["cancelled"] = True
+    job["state"] = "error"
+    job["error"] = "anulat"
+    proc = job.get("proc")
+    if proc is not None and proc.poll() is None:
+        proc.kill()
+    return True
+
+
+def cancel_mux_job(url: str) -> bool:
+    """Anulează extragerea pentru URL (player închis / altă versiune). True dacă rula."""
+    url = _torrserver_url(url)
+    key = hashlib.sha1(url.encode()).hexdigest()
+    with _JOBS_LOCK:
+        return _cancel_locked(key)
 
 
 def mux_job_result(url: str) -> str | None:

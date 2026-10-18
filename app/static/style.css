@@ -12,7 +12,7 @@
   --success: #76e67a;
   --danger: #ea4e4e;
   --radius: 14px;
-  --nav-w: 84px;
+  --nav-w: 92px;
 }
 
 * { box-sizing: border-box; }
@@ -117,22 +117,23 @@ body {
 .nav-items { display: flex; flex-direction: column; gap: 6px; }
 .nav-item {
   position: relative;
-  width: 52px; height: 44px;
+  width: 74px; height: 62px;
+  flex-direction: column; gap: 5px; /* iconiță + etichetă dedesubt */
   border: none; background: none; color: var(--sub);
   cursor: pointer; border-radius: 12px;
   display: flex; align-items: center; justify-content: center;
   transition: background 0.15s, color 0.15s;
 }
-.nav-item svg { width: 22px; height: 22px; fill: currentColor; }
+.nav-item svg { width: 27px; height: 27px; fill: currentColor; flex-shrink: 0; }
 .nav-item:hover { background: var(--card); color: var(--text); }
 .nav-item.active { color: var(--accent); }
 .nav-item.active::before {
   content: "";
-  position: absolute; left: -14px; top: 8px; bottom: 8px;
+  position: absolute; left: -9px; top: 10px; bottom: 10px;
   width: 3px; border-radius: 3px;
   background: var(--accent);
 }
-.nav-tip { display: none; }
+.nav-tip { display: block; font-size: 0.68rem; font-weight: 600; line-height: 1; letter-spacing: 0.1px; }
 
 main#content {
   margin-left: var(--nav-w);
@@ -816,3 +817,439 @@ main#content {
 
 /* hero skeleton ocupă locul hero-ului la încărcare */
 .rows:empty { display: none; }
+
+/* =================== DESKTOP: ecran mare =================== */
+:root { --card-w: 148px; }
+@media (min-width: 1500px) { :root { --card-w: 168px; } }
+.row-scroll .card { flex: 0 0 var(--card-w); }
+.grid, .search-results { grid-template-columns: repeat(auto-fill, minmax(var(--card-w), 1fr)); }
+
+/* rânduri: săgeți de derulare (mouse) — apar la hover pe rând */
+.row-track { position: relative; }
+.row-arrow {
+  position: absolute; top: 0; z-index: 3;
+  height: calc(var(--card-w) * 1.5);
+  width: 52px; border: none; cursor: pointer; color: var(--text);
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity 0.18s;
+}
+.row-arrow.left { left: -2.2rem; background: linear-gradient(90deg, var(--bg-content) 30%, transparent); }
+.row-arrow.right { right: -2.2rem; background: linear-gradient(270deg, var(--bg-content) 30%, transparent); }
+.row:hover .row-arrow { opacity: 0.9; }
+.row-arrow:hover { opacity: 1 !important; color: var(--accent); }
+.row-arrow.off { opacity: 0 !important; pointer-events: none; }
+@media (hover: none) { .row-arrow { display: none; } }
+
+/* hero: imaginea lată reală (cadru din film) peste posterul estompat, cu descriere */
+.hero-desc {
+  color: #dcdcdc; font-size: 0.95rem; line-height: 1.55;
+  margin-top: 0.8rem; max-width: 620px;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.hero-desc:empty { display: none; }
+.hero-backdrop.sharp {
+  inset: 0; filter: none;
+  background-position: center 22%;
+  opacity: 0; transition: opacity 0.7s ease;
+}
+.hero.has-backdrop .hero-backdrop.sharp { opacity: 1; }
+/* umbra pentru text acoperă tot hero-ul (pe .hero-inner lăsa o linie vizibilă deasupra) */
+.hero.has-backdrop .hero-inner { background: none; }
+.hero.has-backdrop::after {
+  content: ""; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(23, 24, 25, 0.96) 0%, rgba(23, 24, 25, 0.78) 34%, rgba(23, 24, 25, 0.15) 70%, transparent),
+    linear-gradient(to top, rgba(23, 24, 25, 0.9), transparent 45%);
+}
+
+/* fereastra filmului: imaginea lată în antet */
+.modal-backdrop.sharp {
+  inset: 0; filter: brightness(0.62);
+  background-position: center 22%;
+}
+.modal-head.has-backdrop::after {
+  content: ""; position: absolute; inset: 0; z-index: 0;
+  background:
+    linear-gradient(90deg, rgba(29, 31, 32, 0.94) 0%, rgba(29, 31, 32, 0.7) 45%, rgba(29, 31, 32, 0.2) 100%),
+    linear-gradient(to top, var(--bg), transparent 45%);
+}
+
+@media (min-width: 761px) {
+  .hero { min-height: 460px; }
+  .hero-inner { padding: 2.4rem 2.6rem 2.6rem; }
+  .hero.has-backdrop .hero-poster { display: none; } /* imaginea lată spune deja totul */
+  .hero.has-backdrop .hero-title { font-size: 2.5rem; -webkit-line-clamp: 2; }
+  .hero-skel { min-height: 460px; }
+
+  /* fereastra filmului mai lată, player mai mare */
+  .modal { padding: 2rem 1.5rem; }
+  .modal-panel { width: min(1180px, 100%); }
+  .modal-head { padding: 2rem 2.2rem; min-height: 300px; align-items: flex-end; }
+  .modal-head.has-backdrop { min-height: 340px; }
+  .modal-info h2 { font-size: 1.8rem; }
+  .modal-desc { max-width: 720px; }
+  .player-box video { max-height: 74vh; }
+}
+@media (max-width: 760px) {
+  .hero-desc { display: none; }
+  .row-arrow { display: none; }
+}
+
+/* =================== meniu cu categorii =================== */
+#nav { overflow-y: auto; }
+.nav-item { height: 58px; flex-shrink: 0; }
+.nav-sep { width: 36px; height: 1px; background: rgba(255, 255, 255, 0.08); margin: 4px auto; flex-shrink: 0; }
+
+/* =================== pagina filmului (în stilul Lampa) =================== */
+.hero-kicker {
+  color: var(--accent); font-size: 0.8rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 1px; margin-bottom: 0.4rem;
+}
+.d-pre { color: #cfcfcf; font-size: 0.95rem; margin-bottom: 0.35rem; }
+.d-tagline { color: #e6e6e6; font-size: 1.05rem; font-style: italic; margin: 0.35rem 0 0.2rem; }
+.d-badges { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.9rem; }
+.d-rate { font-size: 1.25rem; font-weight: 800; color: var(--text); margin-right: 0.3rem; }
+.d-rate small { font-size: 0.68rem; font-weight: 700; color: var(--sub); margin-left: 2px; vertical-align: middle; }
+.d-box {
+  border: 1.5px solid rgba(255, 255, 255, 0.75); border-radius: 6px;
+  padding: 1px 8px; font-size: 0.78rem; font-weight: 700; color: var(--text);
+}
+.d-box.soft { border-color: rgba(255, 255, 255, 0.25); color: var(--sub); font-weight: 600; }
+.d-meta { color: #d8d8d8; font-size: 0.92rem; margin-top: 0.8rem; }
+.d-meta .dot { color: var(--sub); margin: 0 0.35rem; }
+.modal-info .modal-actions { margin: 1.3rem 0 0; }
+.btn.big { padding: 0.75rem 1.6rem; font-size: 1rem; border-radius: 12px; }
+
+/* fișa titlului (tabul Detalii) */
+.facts {
+  display: grid; grid-template-columns: max-content 1fr; gap: 0.45rem 1.4rem;
+  margin: 1.2rem 1.8rem; font-size: 0.9rem;
+}
+.facts dt { color: var(--sub); }
+.facts dd { margin: 0; color: var(--text); }
+
+/* rândurile de sub film: actori + recomandări + similare */
+.d-rows { padding: 1.4rem 1.8rem 0; }
+.d-rows .row-arrow.left { left: -1.8rem; background: linear-gradient(90deg, var(--bg-content) 30%, transparent); }
+.d-rows .row-arrow.right { right: -1.8rem; background: linear-gradient(270deg, var(--bg-content) 30%, transparent); }
+.cast-scroll { display: flex; gap: 0.9rem; overflow-x: auto; padding-bottom: 0.4rem; }
+.cast-scroll .cast-chip { width: 104px; }
+.cast-scroll .cast-chip img, .cast-scroll .cast-noimg { width: 92px; height: 92px; }
+.cast-chip.link { cursor: pointer; border-radius: 12px; padding: 0.3rem 0; transition: background 0.15s; }
+.cast-chip.link:hover { background: var(--card); }
+.cast-chip.link:hover .cast-name { color: var(--accent); }
+.cast-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* pagina actorului */
+.person-head { display: flex; gap: 2rem; align-items: flex-start; margin: 2rem 0 0.5rem; }
+.person-photo {
+  width: 220px; aspect-ratio: 2 / 3; flex-shrink: 0; border-radius: 16px; overflow: hidden;
+  background: var(--card); display: flex; align-items: center; justify-content: center; color: var(--sub);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.45);
+}
+.person-photo img { width: 100%; height: 100%; object-fit: cover; }
+.person-info { min-width: 0; max-width: 900px; }
+.person-info h1 { margin: 0 0 0.3rem; font-size: 2.2rem; line-height: 1.15; }
+.person-bio {
+  color: #d0d0d0; font-size: 0.93rem; line-height: 1.6; margin-top: 1rem; white-space: pre-line;
+  display: -webkit-box; -webkit-line-clamp: 8; -webkit-box-orient: vertical; overflow: hidden; cursor: pointer;
+}
+.person-bio.expanded { display: block; }
+
+@media (min-width: 761px) {
+  /* pagina filmului ocupă tot ecranul (meniul rămâne vizibil), nu o fereastră peste pagină */
+  .modal { left: var(--nav-w); padding: 0; background: var(--bg-content); align-items: stretch; }
+  .modal-panel {
+    width: 100%; max-width: none; min-height: 100%;
+    border-radius: 0; box-shadow: none; background: var(--bg-content); padding-bottom: 3rem;
+  }
+  .modal-head, .modal-head.has-backdrop {
+    border-radius: 0; min-height: min(78vh, 760px);
+    padding: 4.5rem 3rem 2.6rem; align-items: flex-end;
+  }
+  .modal-head-inner { gap: 2.4rem; align-items: flex-end; width: 100%; max-width: 1500px; }
+  .modal-poster { width: 240px; border-radius: 16px; }
+  .modal-info h2 { font-size: 3rem; line-height: 1.08; margin: 0; letter-spacing: -0.5px; }
+  .modal-info { max-width: 900px; }
+  .modal-desc { -webkit-line-clamp: 3; font-size: 0.98rem; color: #dcdcdc; max-width: 820px; margin-top: 1rem; }
+  .modal-backdrop.sharp { filter: brightness(0.7); background-position: center 18%; }
+  .modal-head.has-backdrop::after {
+    background:
+      linear-gradient(90deg, rgba(23, 24, 25, 0.95) 0%, rgba(23, 24, 25, 0.75) 38%, rgba(23, 24, 25, 0.15) 75%, transparent),
+      linear-gradient(to top, var(--bg-content) 2%, transparent 55%);
+  }
+  .modal-close { position: fixed; top: 16px; right: 22px; background: rgba(0, 0, 0, 0.5); }
+  .tabs { background: var(--bg-content); padding: 0 3rem; }
+  .player-box, .torrent-list, .q-filter, .resume-chip, .auto-pill, .sub-title,
+  .season-chips, .eps-grid, .info-desc, .similar-row, .eps-more-wrap, .facts { margin-left: 3rem; margin-right: 3rem; }
+  /* conținutul taburilor (player + versiuni, episoade, detalii) centrat ca un bloc:
+     pe ecranele late nu mai rămâne un gol doar în dreapta */
+  #tab-play, #tab-eps, #tab-info { max-width: calc(1500px + 6rem); margin-left: auto; margin-right: auto; }
+  .d-rows { padding: 1.6rem 3rem 0; }
+  .d-rows .row-arrow.left { left: -3rem; }
+  .d-rows .row-arrow.right { right: -3rem; }
+  .scroll-fade { left: var(--nav-w); }
+}
+@media (max-width: 760px) {
+  .nav-cat, .nav-sep { display: none !important; } /* pe telefon: categoriile sunt pe Acasă */
+  .nav-item { height: 50px; }
+  .d-rows { padding: 1rem 1rem 0; }
+  .facts { margin: 1rem; }
+  .person-head { flex-direction: column; gap: 1rem; }
+  .person-photo { width: 140px; }
+  .person-info h1 { font-size: 1.5rem; }
+}
+
+/* =================== calendar apariții =================== */
+.cal-hint { color: var(--sub); font-size: 0.86rem; margin: -0.4rem 0 1rem; }
+.cal-filter { margin: 0 0 1.2rem !important; }
+.cal-filter small { opacity: 0.7; margin-left: 2px; }
+.cal-day { margin-bottom: 1.8rem; scroll-margin-top: 1rem; }
+.cal-day.past { opacity: 0.6; }
+.cal-day-head {
+  display: flex; align-items: center; gap: 0.6rem;
+  font-size: 1.05rem; font-weight: 700; margin-bottom: 0.8rem;
+  padding-bottom: 0.45rem; border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+.cal-day-head span {
+  font-size: 0.72rem; font-weight: 700; color: var(--sub);
+  background: var(--card); border-radius: 999px; padding: 1px 8px;
+}
+.cal-day.today .cal-day-head { color: var(--accent); border-bottom-color: rgba(255, 226, 22, 0.35); }
+.cal-badge {
+  position: absolute; left: 8px; top: 8px;
+  font-size: 0.66rem; font-weight: 800; border-radius: 6px; padding: 2px 7px;
+  background: rgba(0, 0, 0, 0.72); color: var(--text);
+}
+.cal-badge.k-cinema { color: #ffb36b; }
+.cal-badge.k-digital { color: var(--success); }
+.cal-badge.k-episode { color: #8fb6ff; }
+
+/* =================== MODUL CINEMA (player pe toată fereastra) =================== */
+body.cinema-open { overflow: hidden; }
+.cinema {
+  position: fixed; inset: 0; z-index: 70;
+  background: #000; color: var(--text);
+  display: flex; flex-direction: column;
+}
+.cin-top {
+  position: absolute; left: 0; right: 0; top: 0; z-index: 6;
+  display: flex; align-items: center; gap: 1rem;
+  padding: 0.9rem 1.2rem 2.2rem;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.85), transparent);
+  transition: opacity 0.25s;
+}
+.cin-back {
+  width: 44px; height: 44px; border-radius: 50%; border: none; cursor: pointer;
+  background: rgba(255, 255, 255, 0.12); color: var(--text);
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.cin-back:hover { background: rgba(255, 255, 255, 0.22); }
+.cin-titles { min-width: 0; flex: 1; }
+.cin-title { font-size: 1.15rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cin-sub { color: #cfcfcf; font-size: 0.85rem; margin-top: 2px; }
+.cin-mini {
+  font-size: 0.8rem; color: #d6d6d6; white-space: nowrap;
+  background: rgba(255, 255, 255, 0.08); border-radius: 999px; padding: 0.3rem 0.8rem;
+  display: flex; align-items: center; gap: 0.45rem;
+}
+.cin-mini:empty { display: none; }
+.dot-ok, .dot-mid, .dot-bad { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.dot-ok { background: var(--success); }
+.dot-mid { background: var(--accent); }
+.dot-bad { background: var(--danger); }
+.cin-tabs { display: flex; gap: 0.35rem; }
+.cin-tab {
+  border: none; cursor: pointer; border-radius: 10px;
+  background: rgba(255, 255, 255, 0.1); color: var(--text);
+  padding: 0.5rem 0.95rem; font-size: 0.88rem; font-weight: 600;
+}
+.cin-tab:hover { background: rgba(255, 255, 255, 0.2); }
+.cin-tab.on { background: var(--accent); color: #111; }
+
+.cin-body { flex: 1; display: flex; min-height: 0; }
+.cin-stage { flex: 1; min-width: 0; position: relative; display: flex; }
+.cin-stage #player { flex: 1; margin: 0 !important; max-width: none !important; display: flex; position: relative; }
+.cin-video { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; background: #000; }
+.cin-video video {
+  width: 100%; height: 100%; max-height: none !important; aspect-ratio: auto !important;
+  border-radius: 0 !important; object-fit: contain; background: #000; cursor: pointer;
+}
+.cin-status {
+  margin: auto; text-align: center; color: #cfcfcf; font-size: 1.05rem; padding: 2rem; max-width: 720px;
+  display: flex; flex-direction: column; gap: 0.6rem; overflow-wrap: anywhere;
+}
+.cin-status small { color: var(--sub); font-size: 0.82rem; }
+.cin-status.error { color: #ff9c9c; }
+.cin-video .buffer { top: calc(50% - 26px); left: calc(50% - 26px); width: 52px; height: 52px; }
+.cin-video .video-error {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  max-width: 560px; text-align: center; font-size: 0.95rem; z-index: 3; margin: 0;
+}
+.cin-bigplay {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: 92px; height: 92px; border-radius: 50%; border: none; cursor: pointer;
+  background: rgba(255, 226, 22, 0.92); color: #111; z-index: 2;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+.cin-bigplay svg { margin-left: 6px; }
+
+/* bara de jos */
+.cin-controls {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 3;
+  padding: 2.4rem 1.4rem 0.9rem;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.88), transparent);
+  transition: opacity 0.25s;
+}
+.cin-progress { position: relative; height: 18px; display: flex; align-items: center; cursor: pointer; touch-action: none; }
+.cin-track { position: relative; width: 100%; height: 4px; border-radius: 4px; background: rgba(255, 255, 255, 0.22); transition: height 0.12s; }
+.cin-progress:hover .cin-track { height: 7px; }
+.cin-track i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; }
+.cin-track .buf { background: rgba(255, 255, 255, 0.38); }
+.cin-track .played { background: var(--accent); }
+.cin-track .knob {
+  width: 14px; height: 14px; top: 50%; bottom: auto; margin: -7px 0 0 -7px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 0 4px rgba(255, 226, 22, 0.25); opacity: 0; transition: opacity 0.12s;
+}
+.cin-progress:hover .knob { opacity: 1; }
+.cin-hover {
+  position: absolute; bottom: 20px; transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.85); color: var(--text); font-size: 0.78rem; font-weight: 600;
+  padding: 2px 7px; border-radius: 6px; pointer-events: none; white-space: nowrap;
+}
+.cin-row { display: flex; align-items: center; gap: 0.35rem; margin-top: 0.45rem; }
+.cin-grow { flex: 1; }
+.cbtn {
+  border: none; background: none; color: var(--text); cursor: pointer;
+  width: 42px; height: 42px; border-radius: 10px;
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.cbtn:hover { background: rgba(255, 255, 255, 0.12); color: var(--accent); }
+.cbtn.txt { width: auto; padding: 0 0.7rem; font-weight: 800; font-size: 0.85rem; letter-spacing: 0.3px; }
+.cbtn.on { color: var(--accent); }
+.cin-vol { display: flex; align-items: center; }
+.cin-vol input { width: 0; opacity: 0; transition: width 0.18s, opacity 0.18s; accent-color: var(--accent); }
+.cin-vol:hover input, .cin-vol input:focus { width: 90px; opacity: 1; margin-right: 0.4rem; }
+.cin-time { font-size: 0.86rem; color: #e0e0e0; font-variant-numeric: tabular-nums; margin-left: 0.4rem; white-space: nowrap; }
+
+/* meniuri (subtitrări, viteză) */
+.cin-pop {
+  position: absolute; bottom: 82px; right: 7.5rem; z-index: 5;
+  min-width: 220px; max-width: 320px;
+  background: rgba(24, 25, 26, 0.97); border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px; padding: 0.7rem; box-shadow: 0 14px 50px rgba(0, 0, 0, 0.6);
+}
+.cin-pop.right { right: 4.6rem; min-width: 150px; }
+.cin-pop-title { font-size: 0.78rem; color: var(--sub); text-transform: uppercase; letter-spacing: 0.8px; margin: 0.1rem 0.4rem 0.5rem; }
+.cin-pop .cc-state { margin: 0 0.4rem 0.5rem; display: inline-block; }
+.cin-pop #cc-extract { margin: 0 0.4rem 0.5rem; }
+.cin-pop-list { display: flex; flex-direction: column; }
+.cin-pop-list button {
+  border: none; background: none; color: var(--text); cursor: pointer; text-align: left;
+  padding: 0.5rem 0.7rem; border-radius: 8px; font-size: 0.9rem;
+}
+.cin-pop-list button:hover { background: rgba(255, 255, 255, 0.08); }
+.cin-pop-list button.on { color: var(--accent); font-weight: 700; }
+.cin-pop-list button.on::before { content: "✓ "; }
+
+/* „urmează” peste video */
+.cinema .next-ep {
+  position: absolute; right: 1.6rem; bottom: 110px; z-index: 4; margin: 0;
+  background: rgba(24, 25, 26, 0.95);
+}
+
+/* panoul lateral */
+.cin-panel {
+  width: min(460px, 38vw); flex-shrink: 0; overflow-y: auto;
+  background: var(--bg); border-left: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 4.6rem 0 1.5rem; position: relative; z-index: 5;
+}
+.cin-panel .sub-title, .cin-panel .q-filter, .cin-panel .torrent-list,
+.cin-panel .season-chips, .cin-panel .eps-grid, .cin-panel .eps-more-wrap { margin-left: 1rem !important; margin-right: 1rem !important; }
+.cin-panel #cin-files select {
+  width: calc(100% - 2rem); margin: 0 1rem 0.6rem;
+  background: var(--card); color: var(--text); border: 1px solid #2f3133; border-radius: 10px; padding: 0.5rem 0.7rem;
+}
+.cin-panel .eps-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.cin-panel .t-q { width: 46px; }
+.cin-verdict { margin: 0 1rem 1rem; padding: 0.8rem 1rem; border-radius: 12px; font-size: 0.92rem; line-height: 1.45; }
+.cin-verdict.ok { background: rgba(118, 230, 122, 0.12); color: var(--success); }
+.cin-verdict.mid { background: rgba(255, 226, 22, 0.1); color: var(--accent); }
+.cin-verdict.bad { background: rgba(234, 78, 78, 0.13); color: #ff9c9c; }
+.cin-facts { margin: 0 1rem !important; font-size: 0.86rem; }
+.cin-facts dd.wrap { overflow-wrap: anywhere; color: var(--sub); }
+.cin-hint { margin: 1rem; color: var(--sub); font-size: 0.8rem; line-height: 1.45; }
+
+/* inactiv: totul dispare, rămâne doar filmul (și cursorul se ascunde) */
+.cinema.idle .cin-top, .cinema.idle .cin-controls { opacity: 0; pointer-events: none; }
+.cinema.idle .cin-video, .cinema.idle .cin-video video { cursor: none; }
+
+@media (max-width: 760px) {
+  .cin-top { padding: 0.6rem 0.6rem 1.6rem; gap: 0.5rem; flex-wrap: wrap; }
+  .cin-mini { display: none; }
+  .cin-panel { position: absolute; inset: 0; width: 100%; padding-top: 4.2rem; }
+  .cin-vol input { display: none; }
+  .cin-pop { right: 0.6rem !important; }
+}
+
+/* ratinguri pe pagina filmului: TMDB · КП · IMDb */
+.d-rate.kp { color: #ff8a2b; text-decoration: none; }
+.d-rate.kp:hover small { color: #ff8a2b; }
+.d-rate.imdb { color: #f5c518; }
+
+/* =================== căutare torrente =================== */
+.torrent-row.hide-q, .torrent-row.hide-src { display: none; }
+.ts-form {
+  display: flex; align-items: center; gap: 0.7rem;
+  background: var(--card); border-radius: 14px; padding: 0.55rem 0.6rem 0.55rem 1.1rem;
+  max-width: 900px; margin-bottom: 1.1rem;
+}
+.ts-form svg { fill: var(--sub); flex-shrink: 0; }
+.ts-form input { flex: 1; min-width: 0; background: none; border: none; outline: none; color: var(--text); font-size: 1.05rem; }
+.ts-page .torrent-list, .ts-page .q-filter, .ts-page .sub-title { margin-left: 0 !important; margin-right: 0 !important; }
+.ts-page .torrent-list { max-width: 1400px; }
+.ts-note { color: var(--sub); font-size: 0.82rem; margin: -0.3rem 0 0.8rem; }
+.ts-note:empty { display: none; }
+
+/* =================== sport (RGFootball) =================== */
+.sp-comps { margin: 0 0 1.2rem !important; }
+.sp-list { display: flex; flex-direction: column; gap: 0.45rem; }
+.sp-row {
+  display: flex; align-items: center; gap: 1rem;
+  background: var(--card); border-radius: 12px; padding: 0.7rem 0.9rem;
+  max-width: 1400px;
+}
+.sp-row:hover { background: var(--card-hover); }
+.sp-comp {
+  flex-shrink: 0; width: 150px; font-size: 0.74rem; font-weight: 800; color: var(--accent);
+  text-transform: uppercase; letter-spacing: 0.4px; line-height: 1.25;
+}
+.sp-main { flex: 1; min-width: 0; }
+.sp-match { font-size: 0.98rem; font-weight: 700; overflow-wrap: anywhere; }
+.sp-meta { color: var(--sub); font-size: 0.78rem; margin-top: 2px; }
+.sp-meta:empty { display: none; }
+.sp-vars { display: flex; flex-wrap: wrap; gap: 0.4rem; justify-content: flex-end; flex-shrink: 0; max-width: 46%; }
+.sp-var {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  border: 1px solid #34373a; background: rgba(255, 255, 255, 0.04); color: var(--text);
+  border-radius: 10px; padding: 0.42rem 0.7rem; cursor: pointer; font-size: 0.82rem;
+}
+.sp-var svg { fill: var(--accent); }
+.sp-var small { color: var(--sub); font-size: 0.72rem; }
+.sp-var:hover { border-color: var(--accent); background: rgba(255, 226, 22, 0.08); }
+@media (max-width: 760px) {
+  .sp-row { flex-wrap: wrap; }
+  .sp-comp { width: 100%; }
+  .sp-vars { max-width: none; justify-content: flex-start; }
+}
+
+/* =================== live (Ace Stream) =================== */
+.live-page .ts-form .live-name { flex: 0 0 180px; border-left: 1px solid rgba(255,255,255,0.1); padding-left: 0.8rem; font-size: 0.95rem; }
+.live-page .ts-form .btn.ghost { background: transparent; border: 1px solid rgba(255,255,255,0.18); }
+.live-page .live-sub { margin: 1.4rem 0 0.7rem !important; }
+.live-row { align-items: center; }
+.live-dot { width: 10px; height: 10px; border-radius: 50%; background: #ff4d4d; box-shadow: 0 0 0 4px rgba(255,77,77,0.18); flex-shrink: 0; margin-right: 0.9rem; }
+.cinema.cin-live .cin-tabs { display: none; }
+.cin-video.is-live .cin-progress, .cin-video.is-live #c-back, .cin-video.is-live #c-fwd,
+.cin-video.is-live #c-speed, .cin-video.is-live #c-prev, .cin-video.is-live #c-next { display: none !important; }

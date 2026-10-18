@@ -6,7 +6,7 @@
 <title>Cinema</title>
 <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 <link rel="apple-touch-icon" href="/static/favicon.svg">
-<link rel="stylesheet" href="/static/style.css?v=28">
+<link rel="stylesheet" href="/static/style.css?v=39">
 </head>
 <body>
 
@@ -21,6 +21,40 @@
     <button class="nav-item" data-view="search" aria-label="Căutare">
       <svg viewBox="0 0 24 24"><path d="M15.5 14h-.8l-.3-.3a6.5 6.5 0 1 0-.7.7l.3.3v.8l5 5 1.5-1.5-5-5zm-6 0a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>
       <span class="nav-tip">Căutare</span>
+    </button>
+    <div class="nav-sep"></div>
+    <button class="nav-item nav-cat" data-view="films" aria-label="Filme">
+      <svg viewBox="0 0 24 24"><path d="M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V4z"/></svg>
+      <span class="nav-tip">Filme</span>
+    </button>
+    <button class="nav-item nav-cat" data-view="series" aria-label="Seriale">
+      <svg viewBox="0 0 24 24"><path fill-rule="evenodd" d="M21 3H3a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h5v2h8v-2h5a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm0 14H3V5h18z"/></svg>
+      <span class="nav-tip">Seriale</span>
+    </button>
+    <button class="nav-item nav-cat" data-view="cartoons" aria-label="Desene animate">
+      <svg viewBox="0 0 24 24"><path fill-rule="evenodd" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM8.5 7.5a1.6 1.6 0 1 1 0 3.2 1.6 1.6 0 0 1 0-3.2zm7 0a1.6 1.6 0 1 1 0 3.2 1.6 1.6 0 0 1 0-3.2zM6.8 13.5h10.4a5.4 5.4 0 0 1-10.4 0z"/></svg>
+      <span class="nav-tip">Desene</span>
+    </button>
+    <button class="nav-item nav-cat" data-view="anime" aria-label="Anime">
+      <svg viewBox="0 0 24 24"><path d="M12 2l1.9 5.6L19.8 6l-3.6 4.6L21 14l-6 .4-1.4 5.8L12 15l-1.6 5.2L9 14.4 3 14l4.8-3.4L4.2 6l5.9 1.6z"/></svg>
+      <span class="nav-tip">Anime</span>
+    </button>
+    <button class="nav-item nav-cat" data-view="sport" aria-label="Sport">
+      <svg viewBox="0 0 24 24"><path fill-rule="evenodd" d="M19 5h-2V3H7v2H5a2 2 0 0 0-2 2v1a5 5 0 0 0 4.4 5A5 5 0 0 0 11 15.9V19H7v2h10v-2h-4v-3.1a5 5 0 0 0 3.6-2.9A5 5 0 0 0 21 8V7a2 2 0 0 0-2-2zM5 8V7h2v3.8A3 3 0 0 1 5 8zm14 0a3 3 0 0 1-2 2.8V7h2z"/></svg>
+      <span class="nav-tip">Sport</span>
+    </button>
+    <button class="nav-item nav-cat" data-view="live" aria-label="Live">
+      <svg viewBox="0 0 24 24"><path d="M12 9.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM7.05 7.05l1.41 1.41a5 5 0 0 0 0 7.08l-1.41 1.41a7 7 0 0 1 0-9.9zm9.9 0a7 7 0 0 1 0 9.9l-1.41-1.41a5 5 0 0 0 0-7.08zM4.22 4.22l1.42 1.42a9 9 0 0 0 0 12.72l-1.42 1.42a11 11 0 0 1 0-15.56zm15.56 0a11 11 0 0 1 0 15.56l-1.42-1.42a9 9 0 0 0 0-12.72z"/></svg>
+      <span class="nav-tip">Live</span>
+    </button>
+    <div class="nav-sep"></div>
+    <button class="nav-item nav-cat" data-view="calendar" aria-label="Calendar apariții">
+      <svg viewBox="0 0 24 24"><path fill-rule="evenodd" d="M19 4h-1V2h-2v2H8V2H6v2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 16H5V9h14zM7 11h5v5H7z"/></svg>
+      <span class="nav-tip">Calendar</span>
+    </button>
+    <button class="nav-item nav-cat" data-view="torrents" aria-label="Căutare torrente">
+      <svg viewBox="0 0 24 24"><path d="M3 7v6a9 9 0 0 0 18 0V7h-4v6a5 5 0 0 1-10 0V7zm0-4h4v3H3zm14 0h4v3h-4z"/></svg>
+      <span class="nav-tip">Torrente</span>
     </button>
     <button class="nav-item" data-view="watchlist" aria-label="Watchlist">
       <svg viewBox="0 0 24 24"><path d="M12 17.3l-6.2 3.7 1.6-7L2 9.2l7.1-.6L12 2l2.9 6.6 7.1.6-5.4 4.8 1.6 7z"/></svg>
@@ -58,6 +92,33 @@
   <div id="modal-fade" class="scroll-fade hidden"></div>
 </div>
 
+<!-- Modul cinema: player pe toată fereastra + panou lateral (versiuni / episoade / stare) -->
+<div id="cinema" class="cinema hidden" role="dialog" aria-modal="true" aria-label="Player">
+  <div class="cin-top">
+    <button class="cin-back" id="cin-close" aria-label="Închide player-ul">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M20 11H7.8l5.6-5.6L12 4l-8 8 8 8 1.4-1.4L7.8 13H20z"/></svg>
+    </button>
+    <div class="cin-titles">
+      <div class="cin-title" id="cin-title"></div>
+      <div class="cin-sub" id="cin-sub"></div>
+    </div>
+    <div class="cin-mini" id="cin-mini" title="Starea torrentului"></div>
+    <div class="cin-tabs">
+      <button class="cin-tab" data-pane="versions">Versiuni</button>
+      <button class="cin-tab hidden" data-pane="eps" id="cin-tab-eps">Episoade</button>
+      <button class="cin-tab" data-pane="stats">Stare</button>
+    </div>
+  </div>
+  <div class="cin-body">
+    <div class="cin-stage" id="cin-stage"></div>
+    <aside class="cin-panel hidden" id="cin-panel">
+      <div class="cin-pane" id="cin-pane-versions"><div id="cin-files"></div></div>
+      <div class="cin-pane hidden" id="cin-pane-eps"></div>
+      <div class="cin-pane hidden" id="cin-pane-stats"><div class="status">Aștept stream-ul…</div></div>
+    </aside>
+  </div>
+</div>
+
 <!-- Login (publicat pe web cu parolă) -->
 <div id="login-overlay" class="login-overlay hidden">
   <div class="login-panel">
@@ -69,6 +130,6 @@
   </div>
 </div>
 
-<script src="/static/app.js?v=24"></script>
+<script src="/static/app.js?v=36"></script>
 </body>
 </html>

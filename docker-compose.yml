@@ -47,6 +47,7 @@ services:
       - TORZNAB_URL=http://jackett:9117
       - TORZNAB_API_KEY=${TORZNAB_API_KEY:-}
       - OS_API_KEY=${OS_API_KEY:-}
+      - KP_API_KEY=${KP_API_KEY:-}
     volumes:
       - ./data:/data
     mem_limit: 384m          # ffmpeg (extragerea subtitrărilor) rulează tot aici
@@ -96,6 +97,17 @@ services:
     mem_limit: 768m          # Chromium pornește doar la nevoie; dacă depășește, cade doar el
     logging: *logging
     restart: unless-stopped
+
+  acestream:
+    # motorul Ace Stream (transmisii live P2P), construit din pachetul OFICIAL acestream.org
+    build: ./deploy/acestream
+    container_name: acestream
+    volumes:
+      - ./acestream:/data        # stare + cache (cache-ul live stă pe disc, nu în RAM)
+    mem_limit: 450m              # în repaus ~140 MB; limita protejează restul serverului
+    logging: *logging
+    restart: unless-stopped
+    # fără porturi publice: API-ul 6878 îl vede doar Caddy (după login) și portalul
 
 volumes:
   caddy_data:
