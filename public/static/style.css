@@ -1197,3 +1197,17 @@ body.cinema-open { overflow: hidden; }
 .d-rate.kp { color: #ff8a2b; text-decoration: none; }
 .d-rate.kp:hover small { color: #ff8a2b; }
 .d-rate.imdb { color: #f5c518; }
+
+/* =================== căutare torrente =================== */
+.torrent-row.hide-q, .torrent-row.hide-src { display: none; }
+.ts-form {
+  display: flex; align-items: center; gap: 0.7rem;
+  background: var(--card); border-radius: 14px; padding: 0.55rem 0.6rem 0.55rem 1.1rem;
+  max-width: 900px; margin-bottom: 1.1rem;
+}
+.ts-form svg { fill: var(--sub); flex-shrink: 0; }
+.ts-form input { flex: 1; min-width: 0; background: none; border: none; outline: none; color: var(--text); font-size: 1.05rem; }
+.ts-page .torrent-list, .ts-page .q-filter, .ts-page .sub-title { margin-left: 0 !important; margin-right: 0 !important; }
+.ts-page .torrent-list { max-width: 1400px; }
+.ts-note { color: var(--sub); font-size: 0.82rem; margin: -0.3rem 0 0.8rem; }
+.ts-note:empty { display: none; }

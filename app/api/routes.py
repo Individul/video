@@ -199,6 +199,12 @@ async def torrents_search(
         raise HTTPException(status_code=502, detail=str(e)) from e
 
 
+@router.get("/torrents/search")
+async def torrents_free_search(q: str = Query(min_length=2, max_length=200)) -> dict[str, Any]:
+    """Căutare liberă în toate trackerele (pagina „Torrente”), fără catalog."""
+    return await torrent_service.raw_search(q.strip())
+
+
 @router.post("/torrents/play")
 async def torrents_play(body: PlayBody) -> dict[str, Any]:
     # source = magnet str (rutor/btdig) sau randul de torrent (dict cu torrent_url, Jackett/RuTracker)

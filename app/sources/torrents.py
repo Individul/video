@@ -369,24 +369,30 @@ def _torznab_indexer_list() -> list[tuple[str, str]]:
     return out
 
 
+def _torznab_one(idx: tuple[str, str], query: str, limit: int, timeout: float = 25) -> list[dict]:
+    """Căutare pe un singur indexer Jackett; rezultatele poartă numele sursei."""
+    import requests
+
+    idx_id, label = idx
+    url = (
+        f"{Config.TORZNAB_URL.rstrip('/')}/api/v2.0/indexers/{idx_id}/results/torznab/api"
+        f"?apikey={Config.TORZNAB_API_KEY}&q={quote(query)}&limit={limit}"
+    )
+    r = requests.get(url, headers=_mk_headers(), timeout=timeout)
+    r.raise_for_status()
+    out = _parse_torznab(r.content)
+    for x in out:
+        x["indexer"] = label
+    return out
+
+
 def _search_torznab(query: str, limit: int) -> list[dict]:
     """Interogare Torznab (Jackett) pe fiecare indexer configurat, în paralel.
     Rezultatele poartă numele sursei; un indexer lent/căzut nu blochează restul."""
-    import requests
     from concurrent.futures import ThreadPoolExecutor
 
     def _one(idx: tuple[str, str]) -> list[dict]:
-        idx_id, label = idx
-        url = (
-            f"{Config.TORZNAB_URL.rstrip('/')}/api/v2.0/indexers/{idx_id}/results/torznab/api"
-            f"?apikey={Config.TORZNAB_API_KEY}&q={quote(query)}&limit={limit}"
-        )
-        r = requests.get(url, headers=_mk_headers(), timeout=25)
-        r.raise_for_status()
-        out = _parse_torznab(r.content)
-        for x in out:
-            x["indexer"] = label
-        return out
+        return _torznab_one(idx, query, limit)
 
     results: list[dict] = []
     indexers = _torznab_indexer_list()
@@ -396,6 +402,50 @@ def _search_torznab(query: str, limit: int) -> list[dict]:
             results.extend(f.result())
     results.sort(key=lambda r: (r.get("seeds") or 0), reverse=True)
     return results
+
+
+def raw_search_sync(query: str, wait_s: float = 15.0, limit: int = 200) -> dict:
+    """Căutare liberă în toate trackerele (pagina „Torrente”), fără catalogul TMDB și
+    fără filtrul de filme: orice text, orice categorie. Sursele care nu răspund în
+    `wait_s` secunde sunt raportate ca „lente” — nu țin pe loc rezultatele celorlalte."""
+    from concurrent.futures import ThreadPoolExecutor, wait
+
+    indexers = _torznab_indexer_list() if _torznab_configured() else []
+    pool = ThreadPoolExecutor(max_workers=8)
+    jobs = {pool.submit(_torznab_one, idx, query, 100, wait_s + 5): idx[1] for idx in indexers}
+    jobs[pool.submit(_rutor_or_empty, query)] = "RuTor (direct)"
+    done, pending = wait(list(jobs), timeout=wait_s)
+    pool.shutdown(wait=False, cancel_futures=True)
+
+    results: list[dict] = []
+    failed: list[str] = []
+    for f in done:
+        try:
+            results.extend(f.result())
+        except Exception:  # noqa: BLE001 — o sursă căzută nu strică restul
+            failed.append(jobs[f])
+    slow = sorted(jobs[f] for f in pending)
+    results = dedupe_results(results)
+    for r in results:
+        q = quality_label(r.get("name") or "")
+        r["quality"] = q or ""
+        r["dub"] = "RU" if has_ru_audio(r.get("name")) else ""
+    results.sort(key=lambda r: (r.get("seeds") or 0), reverse=True)
+    return {"results": results[:limit], "slow": slow, "failed": sorted(failed)}
+
+
+def _rutor_or_empty(query: str) -> list[dict]:
+    """Rutor direct; „niciun rezultat” nu e o eroare a sursei."""
+    try:
+        return _search_mirrors(query)
+    except SourceError as e:
+        if "goale" in str(e):
+            return []
+        raise
+
+
+async def raw_search(query: str) -> dict:
+    return await asyncio.to_thread(raw_search_sync, query)
 
 
 def _try_indexer(fn, idx) -> list[dict]:

@@ -270,6 +270,13 @@ function parseRoute() {
   if (seg[0] === "continue") return { view: "continue" };
   if (seg[0] === "downloads") return { view: "downloads" };
   if (seg[0] === "calendar") return { view: "calendar" };
+  if (seg[0] === "torrents") {
+    let q = seg.slice(1).join("/");
+    try {
+      q = decodeURIComponent(q);
+    } catch (_) {}
+    return { view: "torrents", q };
+  }
   return { view: "home" };
 }
 function go(hash) {
@@ -383,6 +390,7 @@ async function render() {
   if (r.view === "continue") return loadContinue();
   if (r.view === "downloads") return loadDownloads();
   if (r.view === "calendar") return loadCalendar();
+  if (r.view === "torrents") return loadTorrentSearch(r.q);
   return loadHome();
 }
 
@@ -711,6 +719,93 @@ async function loadContinue() {
   }
   content.innerHTML = "";
   content.appendChild(wrap);
+}
+
+/* ================= CĂUTARE TORRENTE (direct în trackere, fără catalog) ================= */
+let tsSource = "all";
+
+async function loadTorrentSearch(q) {
+  const seq = viewSeq;
+  q = (q || "").trim();
+  content.innerHTML = `
+    <div class="grid-wrap ts-page">
+      <div class="view-title">Căutare torrente</div>
+      <div class="cal-hint">Caută direct în toate trackerele — orice, nu doar filme din catalog (concerte, documentare, emisiuni…). Clic pe un rezultat îl pornește în player.</div>
+      <form class="ts-form" id="ts-form">
+        ${svg("M15.5 14h-.8l-.3-.3a6.5 6.5 0 1 0-.7.7l.3.3v.8l5 5 1.5-1.5-5-5zm-6 0a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z", 20)}
+        <input id="ts-q" type="search" placeholder="Ce cauți? (ex. Queen Live Aid, BBC Planet Earth…)" autocomplete="off" value="${esc(q)}">
+        <button class="btn" type="submit">Caută</button>
+      </form>
+      <div id="ts-sources" class="q-filter ts-sources"></div>
+      <div id="ts-note" class="ts-note"></div>
+      <div id="torrents"></div>
+    </div>`;
+  const input = $("#ts-q");
+  $("#ts-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const v = input.value.trim();
+    if (v.length < 2) return input.focus();
+    go(`#/torrents/${encodeURIComponent(v)}`);
+  });
+  if (!q) {
+    input.focus();
+    return;
+  }
+
+  const box = $("#torrents");
+  box.innerHTML = `<div class="status">Caut în toate trackerele… (cel mult ~15 s)</div>`;
+  let data;
+  try {
+    data = await api(`/api/torrents/search?q=${encodeURIComponent(q)}`);
+  } catch (err) {
+    if (seq === viewSeq) box.innerHTML = `<div class="status error">Eroare: ${esc(err.message)}</div>`;
+    return;
+  }
+  if (seq !== viewSeq) return;
+  document.title = `${q} — Torrente — Cinema`;
+
+  const notes = [];
+  if (data.slow.length) notes.push(`Nu au răspuns la timp: ${data.slow.join(", ")}`);
+  if (data.failed.length) notes.push(`Indisponibile acum: ${data.failed.join(", ")}`);
+  $("#ts-note").textContent = notes.join(" · ");
+
+  if (!data.results.length) {
+    box.innerHTML = `<div class="status">Niciun rezultat pentru „${esc(q)}”.</div>`;
+    return;
+  }
+  // fiecare rând se redă cu propriul nume ca titlu (nu există pagină de film în catalog)
+  const pseudo = { id: null, name: q, type: "movie" };
+  buildTorrentsList(pseudo, data.results, {
+    label: "Rezultate",
+    titleFor: (r) => ({ id: null, name: r.name, type: "movie" }),
+  });
+
+  // filtru pe sursă (se combină cu filtrul pe calitate din listă)
+  const counts = {};
+  data.results.forEach((r) => {
+    const s = r.indexer || r.source || "?";
+    counts[s] = (counts[s] || 0) + 1;
+  });
+  const sources = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+  if (tsSource !== "all" && !counts[tsSource]) tsSource = "all";
+  const srcBox = $("#ts-sources");
+  if (sources.length > 1) {
+    srcBox.innerHTML = [["all", `Toate sursele ${data.results.length}`], ...sources.map((s) => [s, `${s} ${counts[s]}`])]
+      .map(([v, l]) => `<button data-src="${esc(v)}" class="${v === tsSource ? "on" : ""}">${esc(l)}</button>`)
+      .join("");
+    const applySrc = () =>
+      document.querySelectorAll("#torrent-list .torrent-row").forEach((row) =>
+        row.classList.toggle("hide-src", tsSource !== "all" && row.dataset.src !== tsSource)
+      );
+    srcBox.querySelectorAll("button").forEach((b) =>
+      b.addEventListener("click", () => {
+        tsSource = b.dataset.src;
+        srcBox.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
+        applySrc();
+      })
+    );
+    applySrc();
+  }
 }
 
 /* ================= CALENDAR APARIȚII ================= */
@@ -1771,7 +1866,7 @@ function qualityOf(r) {
   return { label: q || "—", cls: q === "4K" ? "q-4k" : q === "1080p" ? "q-fhd" : q === "720p" ? "q-hd" : "q-low" };
 }
 
-function buildTorrentsList(t, results) {
+function buildTorrentsList(t, results, opts = {}) {
   const box = $("#torrents");
   if (!box) return;
 
@@ -1783,7 +1878,7 @@ function buildTorrentsList(t, results) {
   ["4K", "1080p", "720p"].forEach((q) => counts[q] && chips.push([q, `${q} ${counts[q]}`]));
   if (ruCount && ruCount < results.length) chips.push(["ru", `Dublaj RU ${ruCount}`]);
 
-  box.innerHTML = `<div class="sub-title">Versiuni (${results.length})</div>
+  box.innerHTML = `<div class="sub-title">${esc(opts.label || "Versiuni")} (${results.length})</div>
     ${chips.length > 2 ? `<div class="q-filter" id="q-filter">${chips
       .map(([v, l], i) => `<button data-f="${v}" class="${i === 0 ? "on" : ""}">${esc(l)}</button>`)
       .join("")}</div>` : ""}
@@ -1797,6 +1892,7 @@ function buildTorrentsList(t, results) {
     row._src = r;
     row.dataset.q = r.quality || "";
     row.dataset.ru = r.dub ? "1" : "";
+    row.dataset.src = r.indexer || r.source || "";
     row.innerHTML = `
       <div class="t-q ${q.cls}">${esc(q.label)}</div>
       <div class="t-name">
@@ -1809,7 +1905,8 @@ function buildTorrentsList(t, results) {
         </div>
       </div>
       <span class="btn-play" aria-hidden="true">${svg(I.play, 14)}</span>`;
-    makeActivatable(row, () => playTorrent(t, r, {}), `Redă: ${r.name}`);
+    // titleFor: pe pagina „Torrente” fiecare rând e propriul „titlu” (fără catalog)
+    makeActivatable(row, () => playTorrent(opts.titleFor ? opts.titleFor(r) : t, r, {}), `Redă: ${r.name}`);
     list.appendChild(row);
   });
 
@@ -1821,7 +1918,7 @@ function buildTorrentsList(t, results) {
         const f = b.dataset.f;
         list.querySelectorAll(".torrent-row").forEach((row) => {
           const show = f === "all" || (f === "ru" ? row.dataset.ru === "1" : row.dataset.q === f);
-          row.classList.toggle("hidden", !show);
+          row.classList.toggle("hide-q", !show); // clasă proprie: se combină cu filtrul pe sursă
         });
         setTimeout(updateModalFade, 50);
       })
@@ -2516,6 +2613,9 @@ function trackProgress(video, t, season, episode, ctx) {
   let lastAt = 0;
   let lastPos = -1;
   const send = (pos, dur) =>
+    !t.id // torrent pornit din „Căutare torrente” (fără titlu în catalog): nu are istoric
+      ? Promise.resolve()
+      :
     api("/api/history", {
       method: "POST",
       keepalive: true, // ajunge la server chiar dacă pagina se închide
