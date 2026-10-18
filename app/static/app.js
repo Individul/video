@@ -271,6 +271,7 @@ function parseRoute() {
   if (seg[0] === "downloads") return { view: "downloads" };
   if (seg[0] === "calendar") return { view: "calendar" };
   if (seg[0] === "sport") return { view: "sport" };
+  if (seg[0] === "live") return { view: "live" };
   if (seg[0] === "torrents") {
     let q = seg.slice(1).join("/");
     try {
@@ -392,6 +393,7 @@ async function render() {
   if (r.view === "downloads") return loadDownloads();
   if (r.view === "calendar") return loadCalendar();
   if (r.view === "sport") return loadSport();
+  if (r.view === "live") return loadLive();
   if (r.view === "torrents") return loadTorrentSearch(r.q);
   return loadHome();
 }
@@ -721,6 +723,190 @@ async function loadContinue() {
   }
   content.innerHTML = "";
   content.appendChild(wrap);
+}
+
+/* ================= LIVE (Ace Stream) ================= */
+async function loadLive() {
+  const seq = viewSeq;
+  content.innerHTML = `
+    <div class="grid-wrap live-page">
+      <div class="view-title">Live</div>
+      <div class="cal-hint">Transmisii în direct prin rețeaua Ace Stream (P2P: cu cât mai mulți spectatori, cu atât mai stabil). Lipește un ID sau un link <code>acestream://…</code> și apasă Pornește; îl poți salva ca să-l ai mereu aici.</div>
+      <form class="ts-form" id="live-form">
+        ${svg("M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm-7.07-2.93 1.41 1.41a8 8 0 0 0 0 11.04l-1.41 1.41a10 10 0 0 1 0-13.86zm14.14 0a10 10 0 0 1 0 13.86l-1.41-1.41a8 8 0 0 0 0-11.04z", 20)}
+        <input id="live-ref" placeholder="acestream://… sau ID de 40 de caractere" autocomplete="off">
+        <input id="live-name" class="live-name" placeholder="Nume (opțional)" autocomplete="off">
+        <button class="btn" type="submit">Pornește</button>
+        <button class="btn ghost" type="button" id="live-save">Salvează</button>
+      </form>
+      <div class="sub-title live-sub">Canalele mele</div>
+      <div id="live-list" class="sp-list"><div class="status">Se încarcă…</div></div>
+    </div>`;
+  const refEl = $("#live-ref"), nameEl = $("#live-name");
+  const drawList = (items) => {
+    const box = $("#live-list");
+    if (!box) return;
+    if (!items.length) {
+      box.innerHTML = `<div class="status">Niciun canal salvat. Lipește un ID mai sus și apasă „Salvează”.</div>`;
+      return;
+    }
+    box.innerHTML = "";
+    items.forEach((c) => {
+      const row = document.createElement("div");
+      row.className = "sp-row live-row";
+      row.innerHTML = `
+        <div class="live-dot"></div>
+        <div class="sp-main"><div class="sp-match">${esc(c.name)}</div><div class="sp-meta">${esc(c.kind === "infohash" ? "infohash" : "acestream")} · ${esc(c.hash.slice(0, 12))}…</div></div>
+        <div class="sp-vars">
+          <button class="sp-var" data-a="play">${svg(I.play, 13)} <b>Pornește</b></button>
+          <button class="sp-var" data-a="del" title="Șterge canalul">${svg(I.trash, 13)}</button>
+        </div>`;
+      row.querySelector('[data-a="play"]').addEventListener("click", () =>
+        playLive({ name: c.name, ref: c.kind === "infohash" ? `ih:${c.hash}` : c.hash })
+      );
+      row.querySelector('[data-a="del"]').addEventListener("click", async () => {
+        if (!confirm(`Ștergi canalul „${c.name}”?`)) return;
+        try {
+          drawList(await api(`/api/live/channels/${c.hash}`, { method: "DELETE" }));
+        } catch (err) {
+          toast(err.message, false);
+        }
+      });
+      box.appendChild(row);
+    });
+  };
+  $("#live-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    if (refEl.value.trim().length < 10) return refEl.focus();
+    playLive({ name: nameEl.value.trim() || "Live", ref: refEl.value.trim() });
+  });
+  $("#live-save").addEventListener("click", async () => {
+    if (refEl.value.trim().length < 10) return refEl.focus();
+    try {
+      drawList(await api("/api/live/channels", { method: "POST", body: JSON.stringify({ name: nameEl.value, ref: refEl.value }) }));
+      toast("Canal salvat");
+      refEl.value = nameEl.value = "";
+    } catch (err) {
+      toast(err.message, false);
+    }
+  });
+  try {
+    const items = await api("/api/live/channels");
+    if (seq === viewSeq) drawList(items);
+  } catch (err) {
+    if (seq === viewSeq) $("#live-list").innerHTML = `<div class="status error">${esc(err.message)}</div>`;
+  }
+}
+
+/* hls.js se încarcă doar la prima transmisie live (Chrome/Firefox nu redau HLS nativ) */
+let hlsLoading = null;
+function loadHls() {
+  if (window.Hls) return Promise.resolve(window.Hls);
+  hlsLoading =
+    hlsLoading ||
+    new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = "https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js";
+      s.onload = () => resolve(window.Hls);
+      s.onerror = () => {
+        hlsLoading = null;
+        reject(new Error("Nu am putut încărca player-ul HLS"));
+      };
+      document.head.appendChild(s);
+    });
+  return hlsLoading;
+}
+
+async function playLive({ name, ref }) {
+  enterCinema({ id: null, name, type: "movie" });
+  cinema.classList.add("cin-live"); // fără versiuni/stare torrent: doar player-ul
+  $("#cin-sub").textContent = "Live · Ace Stream";
+  const ps = beginPlay();
+  const playerBox = $("#player");
+  if (!playerBox) return;
+  playerBox.innerHTML = `<div class="cin-status">Conectare la rețeaua Ace Stream…<small>prima pornire poate dura 10–30 s</small></div>`;
+  let sess;
+  try {
+    sess = await api("/api/live/start", { method: "POST", body: JSON.stringify({ ref }) });
+  } catch (err) {
+    if (ps === playSeq) playerBox.innerHTML = `<div class="cin-status error">${esc(err.message)}</div>`;
+    return;
+  }
+  const stopSession = () =>
+    api(`/api/live/stop/${sess.infohash}/${sess.session}`, { method: "POST", keepalive: true }).catch(() => {});
+  if (ps !== playSeq) return stopSession();
+
+  let Hls = null;
+  const video0 = document.createElement("video");
+  if (!video0.canPlayType("application/vnd.apple.mpegurl")) {
+    try {
+      Hls = await loadHls();
+    } catch (err) {
+      stopSession();
+      if (ps === playSeq) playerBox.innerHTML = `<div class="cin-status error">${esc(err.message)}</div>`;
+      return;
+    }
+    if (ps !== playSeq) return stopSession();
+  }
+
+  const ctx = { alive: true, onStop: [] };
+  playerBox.innerHTML = playerHtml();
+  playerBox.querySelector(".cin-video").classList.add("is-live");
+  const video = playerBox.querySelector("#video");
+  $("#buffer").classList.remove("hidden");
+
+  // statistici: peers, viteză, prebuffering
+  const refreshLive = async () => {
+    if (!ctx.alive) return;
+    try {
+      const s = await api(`/api/live/stat/${sess.infohash}/${sess.session}`);
+      if (!ctx.alive) return;
+      const pre = s.status === "prebuf" ? ` · prebuffering ${s.progress || 0}%` : "";
+      $("#cin-mini").innerHTML = `<span class="dot-${s.peers > 2 ? "ok" : s.peers ? "mid" : "bad"}"></span>${sess.is_live ? "LIVE · " : ""}${s.peers} peers · ↓ ${fmtMbit(s.down_bps)} Mbit/s${pre}`;
+    } catch (_) {}
+  };
+  refreshLive();
+  const statTimer = setInterval(refreshLive, 3000);
+
+  // playlist-ul apare după prebuffering: hls.js reîncearcă până e gata
+  let hls = null;
+  if (Hls) {
+    hls = new Hls({
+      liveSyncDurationCount: 3,
+      manifestLoadingMaxRetry: 30,
+      manifestLoadingRetryDelay: 2000,
+      levelLoadingMaxRetry: 10,
+      fragLoadingMaxRetry: 10,
+    });
+    hls.loadSource(sess.playlist);
+    hls.attachMedia(video);
+    hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
+    hls.on(Hls.Events.ERROR, (_, d) => {
+      if (!d.fatal || !ctx.alive) return;
+      if (d.type === Hls.ErrorTypes.MEDIA_ERROR) return hls.recoverMediaError();
+      const box = playerBox.querySelector("#video-error");
+      if (box) {
+        box.textContent = "Transmisia nu răspunde (prea puțini peers sau ID expirat). Încearcă din nou sau alt canal.";
+        box.classList.remove("hidden");
+      }
+    });
+  } else {
+    video.src = sess.playlist; // Safari: HLS nativ
+  }
+
+  enhanceVideo(video, { ctx });
+  playerCleanup = () => {
+    ctx.alive = false;
+    clearInterval(statTimer);
+    ctx.onStop.forEach((fn) => fn());
+    try {
+      if (hls) hls.destroy();
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+    } catch (_) {}
+    stopSession();
+  };
 }
 
 /* ================= SPORT (ultimele apariții RGFootball) ================= */
@@ -1255,6 +1441,7 @@ function restoreFromCinema(id) {
 const cinemaOpen = () => !cinema.classList.contains("hidden");
 
 function enterCinema(t) {
+  cinema.classList.remove("cin-live");
   $("#cin-title").textContent = t.name;
   $("#cin-sub").textContent = "";
   $("#cin-mini").textContent = "";
@@ -2161,13 +2348,9 @@ async function playTorrent(t, source, { season = null, episode = null, seekTo = 
   renderPlayer(t, source, data, { season, episode, seekTo, fileIndex });
 }
 
-function renderPlayer(t, source, data, { season = null, episode = null, seekTo = null, fileIndex = null } = {}) {
-  const playerBox = $("#player");
-  if (!playerBox) return;
-  // alive devine false la cleanup (opresc cronometre/poll-uri); onStop: acțiuni de oprire pe server
-  const ctx = { alive: true, onStop: [] };
-  keepTorrent(data.hash); // același torrent ca înainte (alt fișier din pachet): nu-l deconecta
-  playerBox.innerHTML = `
+/* comenzile player-ului (modul cinema) — aceleași pentru torrente și transmisii live */
+function playerHtml() {
+  return `
     <div class="video-wrap cin-video">
       <video id="video" autoplay playsinline></video>
       <div class="buffer hidden" id="buffer"></div>
@@ -2208,6 +2391,15 @@ function renderPlayer(t, source, data, { season = null, episode = null, seekTo =
           .join("")}</div>
       </div>
     </div>`;
+}
+
+function renderPlayer(t, source, data, { season = null, episode = null, seekTo = null, fileIndex = null } = {}) {
+  const playerBox = $("#player");
+  if (!playerBox) return;
+  // alive devine false la cleanup (opresc cronometre/poll-uri); onStop: acțiuni de oprire pe server
+  const ctx = { alive: true, onStop: [] };
+  keepTorrent(data.hash); // același torrent ca înainte (alt fișier din pachet): nu-l deconecta
+  playerBox.innerHTML = playerHtml();
 
   const video = playerBox.querySelector("#video");
   video.src = data.stream_url;

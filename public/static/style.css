@@ -1243,3 +1243,13 @@ body.cinema-open { overflow: hidden; }
   .sp-comp { width: 100%; }
   .sp-vars { max-width: none; justify-content: flex-start; }
 }
+
+/* =================== live (Ace Stream) =================== */
+.live-page .ts-form .live-name { flex: 0 0 180px; border-left: 1px solid rgba(255,255,255,0.1); padding-left: 0.8rem; font-size: 0.95rem; }
+.live-page .ts-form .btn.ghost { background: transparent; border: 1px solid rgba(255,255,255,0.18); }
+.live-page .live-sub { margin: 1.4rem 0 0.7rem !important; }
+.live-row { align-items: center; }
+.live-dot { width: 10px; height: 10px; border-radius: 50%; background: #ff4d4d; box-shadow: 0 0 0 4px rgba(255,77,77,0.18); flex-shrink: 0; margin-right: 0.9rem; }
+.cinema.cin-live .cin-tabs { display: none; }
+.cin-video.is-live .cin-progress, .cin-video.is-live #c-back, .cin-video.is-live #c-fwd,
+.cin-video.is-live #c-speed, .cin-video.is-live #c-prev, .cin-video.is-live #c-next { display: none !important; }

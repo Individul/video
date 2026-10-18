@@ -199,6 +199,94 @@ async def torrents_search(
         raise HTTPException(status_code=502, detail=str(e)) from e
 
 
+# ----------------- live (Ace Stream) -----------------
+
+class LiveStartBody(BaseModel):
+    ref: str = Field(min_length=10, max_length=200)  # acestream://<id>, <id>, ih:<infohash>, magnet
+
+
+class LiveChannelBody(BaseModel):
+    name: str = Field(default="", max_length=80)
+    ref: str = Field(min_length=10, max_length=200)
+
+
+def _live_err(e: Exception) -> HTTPException:
+    if isinstance(e, SourceError):
+        return HTTPException(status_code=400 if "invalid" in str(e).lower() else 502, detail=str(e))
+    return HTTPException(status_code=502, detail=f"Motorul Ace Stream nu răspunde: {e}")
+
+
+@router.post("/live/start")
+async def live_start(body: LiveStartBody) -> dict[str, Any]:
+    from app.sources import live
+
+    try:
+        kind, h = live.parse_ref(body.ref)
+        return await asyncio.to_thread(live.start, kind, h)
+    except Exception as e:  # noqa: BLE001
+        raise _live_err(e) from e
+
+
+@router.get("/live/m/{ih}/{sess}.m3u8")
+async def live_manifest(ih: str, sess: str) -> Response:
+    from app.sources import live
+
+    try:
+        text = await asyncio.to_thread(live.manifest, ih, sess)
+    except SourceError as e:
+        # încă face prebuffering: hls.js reîncearcă
+        raise HTTPException(status_code=404 if "nu e gata" in str(e) else 400, detail=str(e)) from e
+    except Exception as e:  # noqa: BLE001
+        raise _live_err(e) from e
+    return Response(content=text, media_type="application/vnd.apple.mpegurl",
+                    headers={"Cache-Control": "no-store"})
+
+
+@router.get("/live/stat/{ih}/{sess}")
+async def live_stat(ih: str, sess: str) -> dict[str, Any]:
+    from app.sources import live
+
+    try:
+        return await asyncio.to_thread(live.stat, ih, sess)
+    except Exception as e:  # noqa: BLE001
+        raise _live_err(e) from e
+
+
+@router.post("/live/stop/{ih}/{sess}")
+async def live_stop(ih: str, sess: str) -> dict[str, str]:
+    from app.sources import live
+
+    try:
+        await asyncio.to_thread(live.stop, ih, sess)
+    except SourceError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return {"ok": "true"}
+
+
+@router.get("/live/channels")
+async def live_channels() -> list[dict[str, Any]]:
+    from app.sources import live
+
+    return live.channels()
+
+
+@router.post("/live/channels")
+async def live_channel_add(body: LiveChannelBody) -> list[dict[str, Any]]:
+    from app.sources import live
+
+    try:
+        return await asyncio.to_thread(live.save_channel, body.name, body.ref)
+    except SourceError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@router.delete("/live/channels/{h}")
+async def live_channel_delete(h: str) -> list[dict[str, Any]]:
+    from app.sources import live
+
+    return await asyncio.to_thread(live.delete_channel, h.lower())
+
+
 @router.get("/sport")
 async def sport_feed() -> dict[str, Any]:
     """Ultimele meciuri/evenimente de pe RGFootball, grupate pe meci (pagina „Sport”)."""

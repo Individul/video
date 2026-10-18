@@ -12,6 +12,16 @@
 		}
 	}
 
+	# segmentele video ale transmisiilor live (Ace Stream) — tot doar după login
+	handle /ace/c/* {
+		forward_auth vid:8000 {
+			uri /api/health
+		}
+		reverse_proxy acestream:6878 {
+			flush_interval -1
+		}
+	}
+
 	# restul TorrServer (interfața lui web) nu e accesibil din internet
 	handle /ts/* {
 		respond 404
