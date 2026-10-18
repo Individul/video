@@ -1,3 +1,11 @@
+{
+	servers {
+		# fără HTTP/3 (QUIC pe UDP): măsurat ~4 Mbit/s spre client, față de ~76 Mbit/s pe TCP —
+		# prea puțin pentru video; HTTP/2 pe TCP merge la viteza completă
+		protocols h1 h2
+	}
+}
+
 # HTTPS automat (Let's Encrypt) pentru domeniul din .env (DOMAIN=cinema.exemplu.ro)
 {$DOMAIN} {
 	# stream-uri video: doar după login în portal; parola nu ajunge niciodată la TorrServer
