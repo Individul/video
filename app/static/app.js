@@ -139,6 +139,7 @@ const I = {
   check: "M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z",
   close: "M19 6.4 17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12z",
   trash: "M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6zM19 4h-3.5l-1-1h-5l-1 1H5v2h14z",
+  resync: "M17.65 6.35A7.96 7.96 0 0 0 12 4a8 8 0 1 0 7.73 10h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4z",
   download: "M5 20h14v-2H5zM19 9h-4V3H9v6H5l7 7z",
   pip: "M19 11h-8v6h8zm2-8H3a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm0 16H3V5h18z",
   full: "M7 14H5v5h5v-2H7zm0-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2zM14 5v2h3v3h2V5z",
@@ -986,8 +987,8 @@ async function playLive({ name, ref, url }) {
     // audio-ul poate ieși dezaliniat (voce de robot). Mai sigur: reconstruim player-ul
     // curat la poziția live (rezerva rămâne, segmentele sunt deja pe server).
     let lastRebuild = 0;
-    const rebuild = () => {
-      if (!ctx.alive || Date.now() - lastRebuild < 15000) return;
+    const rebuild = (force = false) => {
+      if (!ctx.alive || (!force && Date.now() - lastRebuild < 15000)) return;
       lastRebuild = Date.now();
       started = false;
       try {
@@ -1013,10 +1014,13 @@ async function playLive({ name, ref, url }) {
         if (!ctx.alive) return;
         if (d.type === Hls.ErrorTypes.MEDIA_ERROR) {
           console.warn("live: eroare media", d.details);
-          if (d.fatal || d.details === "bufferAppendError") rebuild();
+          if (d.fatal || d.details === "bufferAppendError" || d.details === "fragParsingError") rebuild();
           return;
         }
-        if (!d.fatal) return;
+        if (!d.fatal) {
+          console.warn("live:", d.details);
+          return;
+        }
         const box = playerBox.querySelector("#video-error");
         if (box) {
           box.textContent = "Transmisia nu răspunde (prea puțini peers sau ID expirat). Încearcă din nou sau alt canal.";
@@ -1042,9 +1046,27 @@ async function playLive({ name, ref, url }) {
     };
     video.addEventListener("waiting", onWaiting);
     video.addEventListener("playing", onPlaying);
+    // resincronizare manuală (buton sau tasta R): după pierderi de date P2P, decodorul audio
+    // din browser poate rămâne stricat (voce de robot) până la o reîncărcare curată
+    const resync = () => {
+      console.warn("live: resincronizare manuală");
+      rebuild(true);
+    };
+    const pip = playerBox.querySelector("#v-pip");
+    const syncBtn = document.createElement("button");
+    syncBtn.className = "cbtn";
+    syncBtn.title = "Resincronizează (R) — dacă sunetul sau imaginea se strică";
+    syncBtn.innerHTML = svg(I.resync, 22);
+    syncBtn.addEventListener("click", resync);
+    if (pip) pip.before(syncBtn);
+    const onKey = (e) => {
+      if ((e.key === "r" || e.key === "R") && !e.ctrlKey && !e.metaKey && !/INPUT|TEXTAREA/.test(e.target.tagName)) resync();
+    };
+    document.addEventListener("keydown", onKey);
     ctx.onStop.push(() => {
       video.removeEventListener("waiting", onWaiting);
       video.removeEventListener("playing", onPlaying);
+      document.removeEventListener("keydown", onKey);
     });
   } else {
     video.src = sess.playlist; // Safari: HLS nativ
