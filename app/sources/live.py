@@ -60,24 +60,27 @@ def start(kind: str, ref: str) -> dict:
     if data.get("error"):
         raise SourceError(f"Ace Stream: {data['error']}")
     resp = data.get("response") or {}
-    m = re.search(r"/ace/r/([0-9a-f]{40})/([0-9a-f]{32})\.m3u8", resp.get("playback_url") or "")
+    # /ace/r/... = fișier (VOD), /ace/m/... = transmisie live
+    m = re.search(r"/ace/([rm])/([0-9a-f]{40})/([0-9a-f]{32})\.m3u8", resp.get("playback_url") or "")
     if not m:
         raise SourceError("Ace Stream nu a întors un flux")
-    ih, sess = m.group(1), m.group(2)
+    mode, ih, sess = m.groups()
     return {
         "infohash": ih,
         "session": sess,
-        "playlist": f"/api/live/m/{ih}/{sess}.m3u8",
+        "playlist": f"/api/live/m/{ih}/{sess}.m3u8?t={mode}",
         "is_live": bool(resp.get("is_live")),
     }
 
 
-def manifest(ih: str, sess: str) -> str:
+def manifest(ih: str, sess: str, mode: str = "r") -> str:
     """Playlist-ul HLS cu adresele segmentelor rescrise spre /ace/c/... (prin Caddy)."""
     import requests
 
     _check(ih, sess)
-    r = requests.get(f"{engine_url()}/ace/r/{ih}/{sess}.m3u8", timeout=30)
+    if mode not in ("r", "m"):
+        raise SourceError("Sesiune invalidă")
+    r = requests.get(f"{engine_url()}/ace/{mode}/{ih}/{sess}.m3u8", timeout=30)
     if r.status_code != 200:
         raise SourceError(f"Fluxul nu e gata ({r.status_code})")
     return re.sub(r"https?://[^/\s]+/ace/", "/ace/", r.text)

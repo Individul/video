@@ -228,11 +228,11 @@ async def live_start(body: LiveStartBody) -> dict[str, Any]:
 
 
 @router.get("/live/m/{ih}/{sess}.m3u8")
-async def live_manifest(ih: str, sess: str) -> Response:
+async def live_manifest(ih: str, sess: str, t: str = "r") -> Response:
     from app.sources import live
 
     try:
-        text = await asyncio.to_thread(live.manifest, ih, sess)
+        text = await asyncio.to_thread(live.manifest, ih, sess, t)
     except SourceError as e:
         # încă face prebuffering: hls.js reîncearcă
         raise HTTPException(status_code=404 if "nu e gata" in str(e) else 400, detail=str(e)) from e

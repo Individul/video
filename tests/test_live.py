@@ -51,3 +51,15 @@ def test_channels_roundtrip(tmp_path, monkeypatch):
     items = live.save_channel("Redenumit", H)  # același hash: înlocuit, nu dublat
     assert items == [{"name": "Redenumit", "kind": "id", "hash": H}]
     assert live.delete_channel(H) == []
+
+
+def test_start_accepts_live_playlist(monkeypatch):
+    url = f"http://acestream:6878/ace/m/{H}/{S}.m3u8"
+    monkeypatch.setattr(live, "_get_json", lambda u, timeout=60: {"response": {"playback_url": url, "is_live": 1}})
+    out = live.start("id", H)
+    assert out["playlist"] == f"/api/live/m/{H}/{S}.m3u8?t=m" and out["is_live"]
+
+
+def test_manifest_rejects_unknown_mode():
+    with pytest.raises(SourceError):
+        live.manifest(H, S, "x")
