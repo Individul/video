@@ -1260,3 +1260,8 @@ body.cinema-open { overflow: hidden; }
 .cinema.cin-live .cin-tabs { display: none; }
 .cin-video.is-live .cin-progress, .cin-video.is-live #c-back, .cin-video.is-live #c-fwd,
 .cin-video.is-live #c-speed, .cin-video.is-live #c-prev, .cin-video.is-live #c-next { display: none !important; }
+
+/* =================== pista audio =================== */
+.cin-pop.audio-pop { right: 10.5rem; min-width: 260px; max-width: 380px; }
+.cin-pop .audio-note:empty { display: none; }
+.cin-pop .audio-note { margin: 0.5rem 0.4rem 0; font-size: 0.75rem; }

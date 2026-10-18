@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -451,6 +452,43 @@ async def subtitles_mux_data(url: str = Query(min_length=10)) -> Response:
     if not vtt:
         raise HTTPException(status_code=404, detail="Încă nu e gata")
     return Response(content=vtt, media_type="text/vtt; charset=utf-8")
+
+
+# ----------------- piste audio (dublaje) -----------------
+
+@router.get("/audio/tracks")
+async def audio_tracks(url: str = Query(min_length=10)) -> dict[str, Any]:
+    """Pistele audio ale fișierului (limbă, codec, canale) + dacă se poate comuta (H.264)."""
+    from app.sources import audio
+
+    try:
+        return await asyncio.to_thread(audio.probe, url)
+    except SourceError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+
+@router.get("/audio/stream")
+async def audio_stream(
+    url: str = Query(min_length=10),
+    a: int = Query(ge=0, lt=32),
+    t: float = Query(0, ge=0, lt=86400),
+) -> StreamingResponse:
+    """Video copiat + pista audio `a` în AAC, ca MP4 fragmentat începând de la `t` secunde."""
+    from app.sources import audio
+
+    try:
+        body = await asyncio.to_thread(audio.stream, url, a, t)
+    except SourceError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    return StreamingResponse(body, media_type="video/mp4", headers={"Cache-Control": "no-store"})
+
+
+@router.delete("/audio/stream")
+async def audio_stream_stop() -> dict[str, str]:
+    from app.sources import audio
+
+    await asyncio.to_thread(audio.stop)
+    return {"status": "ok"}
 
 
 # ----------------- cautare / browsare -----------------
