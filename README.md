@@ -95,7 +95,7 @@ app/
   api/routes.py
   services/  catalog.py, search.py
   sources/   tmdb.py, kinopoisk.py, torrents.py, subtitles.py, sport.py, live.py, pimple.py, calendar.py
-  static/    index.html, app.js, style.css
+  static/    index.html, style.css, js/ (13 scripturi în ordine: 01-core … 13-init)
 deploy/      setup-vps.sh, secure-vps.sh, backup.sh, torrserver-watchdog.sh, acestream/Dockerfile
 tests/
 docker-compose.yml, Caddyfile, Dockerfile
