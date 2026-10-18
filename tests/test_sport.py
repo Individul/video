@@ -99,3 +99,21 @@ def test_fara_caps_nu_ascunde_nimic(monkeypatch):
 def test_formate_rgfootball(title, expected):
     p = sport.parse_title(title)
     assert (p["country"], p["competition"], p["round"], p["match"], p["quality"]) == expected
+
+
+def test_cautare_trimite_q_la_jackett_si_cache_separat(monkeypatch):
+    import requests
+
+    urls = []
+
+    def get(url, *a, **k):
+        urls.append(url)
+        return Resp(CAPS if "t=caps" in url else FEED)
+
+    monkeypatch.setattr(requests, "get", get)
+    sport.feed()
+    sport.feed(q="  Bologna   Inter ")
+    sport.feed(q="bologna inter")  # aceeași căutare (spații/majuscule) -> din cache
+    search = [u for u in urls if "t=search" in u]
+    assert len(search) == 2
+    assert "q=" not in search[0] and "q=Bologna+Inter" in search[1]

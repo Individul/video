@@ -137,7 +137,7 @@ def _sections() -> dict[str, str]:
     return names
 
 
-def _fetch(cat: str | None) -> list[dict]:
+def _fetch(cat: str | None, q: str | None = None) -> list[dict]:
     import requests
     from xml.etree import ElementTree
 
@@ -146,6 +146,8 @@ def _fetch(cat: str | None) -> list[dict]:
     params = {"apikey": Config.TORZNAB_API_KEY, "t": "search"}
     if cat:
         params["cat"] = cat
+    if q:
+        params["q"] = q  # căutare în toată arhiva RGFootball (echipe, competiții)
     url = f"{Config.TORZNAB_URL.rstrip('/')}/api/v2.0/indexers/{INDEXER}/results/torznab/api?{urlencode(params)}"
     r = requests.get(url, timeout=30)
     r.raise_for_status()
@@ -188,16 +190,17 @@ def _fetch(cat: str | None) -> list[dict]:
     return out
 
 
-def feed(cat: str | None = None) -> list[dict]:
-    """Meciuri recente, grupate: [{key, competition, country, round, match, date, variants[]}]."""
-    key = cat or "*"
+def feed(cat: str | None = None, q: str | None = None) -> list[dict]:
+    """Meciuri recente (sau găsite după `q`), grupate: [{key, competition, country, round, match, date, variants[]}]."""
+    q = " ".join((q or "").split())[:100] or None
+    key = f"{cat or '*'}|{(q or '').lower()}"
     hit = _cache.get(key)
     if hit and time.time() - hit[0] < _CACHE_TTL:
         return hit[1]
     from app.sources.torrents import _human_size
 
     groups: dict[str, dict] = {}
-    for x in _fetch(cat):
+    for x in _fetch(cat, q):
         if x["vip"]:
             continue  # secțiunile VIP (VIP-Light, ⚽️VIP) dau 404 cu contul din Jackett
         gkey = f"{x['competition']}|{x['round']}|{x['match']}|{x['date']}".lower()
@@ -227,5 +230,8 @@ def feed(cat: str | None = None) -> list[dict]:
 
     for g in out:
         g["variants"].sort(key=lambda v: (weight(v["quality"]), -(v["seeds"] or 0)))
+    if len(_cache) > 50:  # căutările se adună în cache: păstrăm doar cele mai noi
+        for k in sorted(_cache, key=lambda k: _cache[k][0])[:-25]:
+            del _cache[k]
     _cache[key] = (time.time(), out)
     return out

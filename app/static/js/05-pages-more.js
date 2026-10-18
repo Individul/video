@@ -4,6 +4,7 @@
 
 /* ================= SPORT (ultimele apariții RGFootball) ================= */
 let sportComp = "all";
+let sportQuery = ""; // căutarea în arhivă rămâne la întoarcerea pe pagină
 
 async function loadSport() {
   const seq = viewSeq;
@@ -11,93 +12,141 @@ async function loadSport() {
     <div class="grid-wrap sp-page">
       <div class="view-title">Sport</div>
       <div class="cal-hint">Ultimele meciuri și evenimente apărute pe RGFootball. Clic pe o calitate pornește înregistrarea în player.</div>
-      <div class="status">Se încarcă meciurile…</div>
+      <form class="ts-form sp-search" id="sp-form">
+        ${svg("M15.5 14h-.8l-.3-.3a6.5 6.5 0 1 0-.7.7l.3.3v.8l5 5 1.5-1.5-5-5zm-6 0a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z", 20)}
+        <input id="sp-q" type="search" placeholder="Echipă, competiție, „UFC”… (Enter caută în toată arhiva)" autocomplete="off" value="${esc(sportQuery)}">
+        <button class="btn" type="submit">Caută</button>
+      </form>
+      <div class="ts-note" id="sp-note"></div>
+      <div id="sp-body"><div class="status">Se încarcă meciurile…</div></div>
     </div>`;
-  let data;
-  try {
-    data = await api("/api/sport");
-  } catch (err) {
-    if (seq === viewSeq) content.querySelector(".status").outerHTML = `<div class="status error">${esc(err.message)}</div>`;
-    return;
-  }
-  if (seq !== viewSeq) return;
-  const matches = data.matches || [];
-  const wrap = content.querySelector(".sp-page");
-  if (!matches.length) {
-    wrap.querySelector(".status").textContent = "Nicio apariție recentă.";
-    return;
-  }
-
-  const counts = {};
-  matches.forEach((m) => (counts[m.competition] = (counts[m.competition] || 0) + 1));
-  const comps = Object.keys(counts).sort((a, b) => counts[b] - counts[a] || a.localeCompare(b));
-  if (sportComp !== "all" && !counts[sportComp]) sportComp = "all";
-  wrap.querySelector(".status").remove();
-  const chips = document.createElement("div");
-  chips.className = "q-filter sp-comps";
-  chips.innerHTML = [["all", `Toate ${matches.length}`], ...comps.map((c) => [c, `${c} ${counts[c]}`])]
-    .map(([v, l]) => `<button data-c="${esc(v)}" class="${v === sportComp ? "on" : ""}">${esc(l)}</button>`)
-    .join("");
-  wrap.appendChild(chips);
-  const list = document.createElement("div");
-  wrap.appendChild(list);
+  const input = $("#sp-q"), note = $("#sp-note"), body = $("#sp-body");
+  let matches = [];
 
   const today = new Date().toISOString().slice(0, 10);
   const yesterday = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
   const dayLabel = (d) => {
     if (!d) return "Fără dată";
-    const long = new Date(d + "T12:00:00").toLocaleDateString("ro-RO", { weekday: "long", day: "numeric", month: "long" });
+    const long = new Date(d + "T12:00:00").toLocaleDateString("ro-RO", { weekday: "long", day: "numeric", month: "long", ...(d.slice(0, 4) !== today.slice(0, 4) ? { year: "numeric" } : {}) });
     return d === today ? `Azi · ${long}` : d === yesterday ? `Ieri · ${long}` : long[0].toUpperCase() + long.slice(1);
   };
   // data scurtă pe fiecare rând (ex. „dum. 18 oct.”), ca să se vadă și fără titlul zilei
   const shortDay = (d) =>
-    d ? new Date(d + "T12:00:00").toLocaleDateString("ro-RO", { weekday: "short", day: "numeric", month: "short" }) : "";
-
-  const draw = () => {
-    list.innerHTML = "";
-    const byDay = new Map();
-    matches
-      .filter((m) => sportComp === "all" || m.competition === sportComp)
-      .forEach((m) => (byDay.has(m.date) ? byDay.get(m.date) : byDay.set(m.date, []).get(m.date)).push(m));
-    for (const [d, ms] of byDay) {
-      const sec = document.createElement("section");
-      sec.className = "cal-day" + (d === today ? " today" : "");
-      sec.innerHTML = `<div class="cal-day-head">${esc(dayLabel(d))}<span>${ms.length}</span></div><div class="sp-list"></div>`;
-      const box = sec.querySelector(".sp-list");
-      ms.forEach((m) => {
-        const row = document.createElement("div");
-        row.className = "sp-row";
-        row.innerHTML = `
-          <div class="sp-comp">${flagImg(spFlag(m))}${esc(m.competition)}</div>
-          <div class="sp-main">
-            <div class="sp-match">${esc(m.match)}${m.date ? `<span class="sp-date">${esc(shortDay(m.date))}</span>` : ""}</div>
-            <div class="sp-meta">${[m.country, m.round].filter(Boolean).map(esc).join(" · ")}</div>
-          </div>
-          <div class="sp-vars"></div>`;
-        const vars = row.querySelector(".sp-vars");
-        m.variants.forEach((v) => {
-          const b = document.createElement("button");
-          b.className = "sp-var";
-          b.title = v.name;
-          b.innerHTML = `${svg(I.play, 13)} <b>${esc(v.quality || "Redă")}</b><small>${esc(v.size || "")}${v.seeds != null ? ` · ▲ ${Number(v.seeds)}` : ""}</small>`;
-          b.addEventListener("click", () =>
-            playTorrent({ id: null, name: `${m.match} · ${m.competition}`, type: "movie" }, v, {})
-          );
-          vars.appendChild(b);
-        });
-        box.appendChild(row);
-      });
-      list.appendChild(sec);
-    }
+    d ? new Date(d + "T12:00:00").toLocaleDateString("ro-RO", { weekday: "short", day: "numeric", month: "short", ...(d.slice(0, 4) !== today.slice(0, 4) ? { year: "numeric" } : {}) }) : "";
+  // filtrul instant (ce scrii) potrivește toate cuvintele în meci/competiție/țară/etapă
+  const norm = (x) => (x || "").toLowerCase();
+  const matchesText = (m, words) => {
+    const hay = norm(`${m.match} ${m.competition} ${m.country} ${m.round}`);
+    return words.every((w) => hay.includes(w));
   };
-  chips.querySelectorAll("button").forEach((b) =>
-    b.addEventListener("click", () => {
-      sportComp = b.dataset.c;
-      chips.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
-      draw();
-    })
-  );
-  draw();
+
+  const render = () => {
+    body.innerHTML = "";
+    if (!matches.length) {
+      body.innerHTML = `<div class="status">${sportQuery ? "Nimic găsit în arhivă." : "Nicio apariție recentă."}</div>`;
+      return;
+    }
+    const counts = {};
+    matches.forEach((m) => (counts[m.competition] = (counts[m.competition] || 0) + 1));
+    const comps = Object.keys(counts).sort((a, b) => counts[b] - counts[a] || a.localeCompare(b));
+    if (sportComp !== "all" && !counts[sportComp]) sportComp = "all";
+    const chips = document.createElement("div");
+    chips.className = "q-filter sp-comps";
+    chips.innerHTML = [["all", `Toate ${matches.length}`], ...comps.map((c) => [c, `${c} ${counts[c]}`])]
+      .map(([v, l]) => `<button data-c="${esc(v)}" class="${v === sportComp ? "on" : ""}">${esc(l)}</button>`)
+      .join("");
+    body.appendChild(chips);
+    const list = document.createElement("div");
+    body.appendChild(list);
+
+    const draw = () => {
+      list.innerHTML = "";
+      const words = norm(input.value).split(/\s+/).filter(Boolean);
+      const byDay = new Map();
+      matches
+        .filter((m) => (sportComp === "all" || m.competition === sportComp) && matchesText(m, words))
+        .forEach((m) => (byDay.has(m.date) ? byDay.get(m.date) : byDay.set(m.date, []).get(m.date)).push(m));
+      if (!byDay.size) list.innerHTML = `<div class="status">Nimic potrivit aici. Apasă Enter ca să cauți în toată arhiva.</div>`;
+      for (const [d, ms] of byDay) {
+        const sec = document.createElement("section");
+        sec.className = "cal-day" + (d === today ? " today" : "");
+        sec.innerHTML = `<div class="cal-day-head">${esc(dayLabel(d))}<span>${ms.length}</span></div><div class="sp-list"></div>`;
+        const box = sec.querySelector(".sp-list");
+        ms.forEach((m) => {
+          const row = document.createElement("div");
+          row.className = "sp-row";
+          row.innerHTML = `
+            <div class="sp-comp">${flagImg(spFlag(m))}${esc(m.competition)}</div>
+            <div class="sp-main">
+              <div class="sp-match">${esc(m.match)}${m.date ? `<span class="sp-date">${esc(shortDay(m.date))}</span>` : ""}</div>
+              <div class="sp-meta">${[m.country, m.round].filter(Boolean).map(esc).join(" · ")}</div>
+            </div>
+            <div class="sp-vars"></div>`;
+          const vars = row.querySelector(".sp-vars");
+          m.variants.forEach((v) => {
+            const b = document.createElement("button");
+            b.className = "sp-var";
+            b.title = v.name;
+            b.innerHTML = `${svg(I.play, 13)} <b>${esc(v.quality || "Redă")}</b><small>${esc(v.size || "")}${v.seeds != null ? ` · ▲ ${Number(v.seeds)}` : ""}</small>`;
+            b.addEventListener("click", () =>
+              playTorrent({ id: null, name: `${m.match} · ${m.competition}`, type: "movie" }, v, {})
+            );
+            vars.appendChild(b);
+          });
+          box.appendChild(row);
+        });
+        list.appendChild(sec);
+      }
+    };
+    chips.querySelectorAll("button").forEach((b) =>
+      b.addEventListener("click", () => {
+        sportComp = b.dataset.c;
+        chips.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
+        draw();
+      })
+    );
+    input.oninput = draw;
+    draw();
+  };
+
+  // ultimele apariții sau, cu sportQuery, căutare în toată arhiva RGFootball
+  const load = async () => {
+    const q = sportQuery;
+    note.innerHTML = q
+      ? `Rezultate din arhivă pentru „${esc(q)}” · <a href="#" id="sp-reset">înapoi la ultimele apariții</a>`
+      : "";
+    const reset = $("#sp-reset");
+    if (reset)
+      reset.addEventListener("click", (e) => {
+        e.preventDefault();
+        sportQuery = "";
+        input.value = "";
+        load();
+      });
+    body.innerHTML = `<div class="status">${q ? "Caut în arhivă…" : "Se încarcă meciurile…"}</div>`;
+    let data;
+    try {
+      data = await api(q ? `/api/sport?q=${encodeURIComponent(q)}` : "/api/sport");
+    } catch (err) {
+      if (seq === viewSeq && q === sportQuery) body.innerHTML = `<div class="status error">${esc(err.message)}</div>`;
+      return;
+    }
+    if (seq !== viewSeq || q !== sportQuery) return; // între timp ai plecat sau ai căutat altceva
+    matches = data.matches || [];
+    if (q) input.value = ""; // rezultatele sunt deja căutarea; câmpul rămâne liber pentru filtrare
+    render();
+  };
+
+  $("#sp-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const q = input.value.trim();
+    if (q.length < 2) return input.focus();
+    sportQuery = q;
+    sportComp = "all";
+    load();
+  });
+  if (sportQuery) input.value = "";
+  load();
 }
 
 /* ================= CĂUTARE TORRENTE (direct în trackere, fără catalog) ================= */

@@ -350,12 +350,13 @@ async def live_event_play(body: LiveEventPlayBody) -> dict[str, Any]:
 
 
 @router.get("/sport")
-async def sport_feed() -> dict[str, Any]:
-    """Ultimele meciuri/evenimente de pe RGFootball, grupate pe meci (pagina „Sport”)."""
+async def sport_feed(q: str | None = Query(None, max_length=100)) -> dict[str, Any]:
+    """Ultimele meciuri/evenimente de pe RGFootball, grupate pe meci (pagina „Sport”);
+    cu `q`, căutare în toată arhiva (echipă, competiție, „UFC”…)."""
     from app.sources import sport
 
     try:
-        return {"matches": await asyncio.to_thread(sport.feed)}
+        return {"matches": await asyncio.to_thread(sport.feed, None, q)}
     except SourceError as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
     except Exception as e:  # noqa: BLE001 — Jackett/RGFootball indisponibil
