@@ -179,7 +179,10 @@ async def auth_login(body: LoginBody, request: Request, response: Response) -> d
                 detail=f"Prea multe încercări greșite. Încearcă din nou peste {BLOCK_SECONDS // 60} min.",
                 headers={"Retry-After": str(BLOCK_SECONDS)},
             )
-        raise HTTPException(status_code=401, detail=f"Parolă greșită (mai ai {remaining} încercări)")
+        raise HTTPException(
+            status_code=401,
+            detail=f"Parolă greșită (mai ai {remaining} {'încercare' if remaining == 1 else 'încercări'})",
+        )
     register_ok(ip)
     if Config.APP_PASSWORD:
         response.set_cookie(

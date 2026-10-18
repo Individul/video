@@ -85,6 +85,7 @@ def test_extract_mkv_cache_hit_fara_ffmpeg(monkeypatch, tmp_path):
 
     # fără ffmpeg configurat, dar cu cache pe disc → job-ul raportează done instant
     monkeypatch.setattr(mod.Config, "FFMPEG_PATH", None)
+    monkeypatch.setattr(mod.Config, "TORRSERVER_URL", "http://127.0.0.1:8090")  # independent de .env
     monkeypatch.setattr(mod, "ROOT", tmp_path)
     url = "http://127.0.0.1:8090/stream/x.mkv?link=abc"
     mod._mux_cache_path(url).write_text(
@@ -99,6 +100,7 @@ def test_extract_mkv_fara_ffmpeg_fara_cache(monkeypatch, tmp_path):
     from app.sources import subtitles as mod
 
     monkeypatch.setattr(mod.Config, "FFMPEG_PATH", None)
+    monkeypatch.setattr(mod.Config, "TORRSERVER_URL", "http://127.0.0.1:8090")  # independent de .env
     monkeypatch.setattr(mod, "ROOT", tmp_path)
     st = mod.mux_job_state("http://127.0.0.1:8090/stream/y.mkv?link=zzz")
     assert st["status"] == "error"
