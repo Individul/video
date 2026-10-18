@@ -244,6 +244,26 @@ async function playLive({ name, ref, url }) {
     await new Promise((res) => setTimeout(res, 2500));
   }
   if (!ctx.alive) return;
+
+  // sunet pe care browserul nu-l știe (MP2 la canalele prin satelit, AC3): serverul retransmite
+  // prin ffmpeg cu sunetul în AAC; video-ul și rezerva rămân aceleași
+  try {
+    const prep = await api(`/api/live/prepare/${sess.infohash}/${sess.session}`, { method: "POST" });
+    if (!ctx.alive) return;
+    if (prep.relay) {
+      console.warn(`live: sunet ${prep.audio} → retransmisie cu AAC`);
+      sess.playlist = prep.playlist;
+      for (let i = 0; i < 20 && ctx.alive; i++) {
+        sub.textContent = `Live · convertesc sunetul (${prep.audio.toUpperCase()} → AAC)…`;
+        const r = await fetch(sess.playlist, { cache: "no-store" }).catch(() => null);
+        if (r && r.ok && ((await r.text()).match(/#EXTINF/g) || []).length >= 4) break;
+        await new Promise((res) => setTimeout(res, 1500));
+      }
+      if (!ctx.alive) return;
+    }
+  } catch (err) {
+    console.warn("live: verificarea sunetului a eșuat", err);
+  }
   sub.textContent = "Live · Ace Stream";
 
   if (Hls) {

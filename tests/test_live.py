@@ -105,3 +105,40 @@ def test_audio_pts_parses_ffprobe_csv(monkeypatch):
 
     monkeypatch.setattr(live.subprocess, "run", lambda *a, **k: P())
     assert live._audio_pts(b"x") == [10974.056, 10974.077333]
+
+
+def test_relay_cmd_copies_video_converts_audio(tmp_path):
+    cmd = live.relay_cmd("http://acestream:6878/ace/m/x/y.m3u8", tmp_path)
+    assert cmd[cmd.index("-live_start_index") + 1] == "0"  # păstrează rezerva acumulată
+    assert cmd[cmd.index("-c:v") + 1] == "copy" and cmd[cmd.index("-c:a") + 1] == "aac"
+    assert "aresample=async=1000" in cmd  # găurile din audio devin liniște
+    assert cmd[-1] == str(tmp_path / "index.m3u8")
+
+
+def test_relay_file_only_serves_own_session_and_safe_names(tmp_path, monkeypatch):
+    (tmp_path / "index.m3u8").write_text("#EXTM3U\n")
+    (tmp_path / "3.ts").write_bytes(b"x")
+    monkeypatch.setattr(live, "_relay", {"sess": S, "dir": tmp_path, "seen": 0, "proc": None})
+    assert live.relay_file(S, "index.m3u8") == tmp_path / "index.m3u8"
+    assert live.relay_file(S, "3.ts") == tmp_path / "3.ts"
+    assert live.relay_file(S, "4.ts") is None  # încă nescris
+    assert live.relay_file(S, "../etc/passwd") is None
+    assert live.relay_file("f" * 32, "index.m3u8") is None  # altă sesiune
+    with pytest.raises(SourceError):
+        live.relay_file("../x", "index.m3u8")
+
+
+def test_prepare_decides_relay_by_audio_codec(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from app.config import Config
+    from app.main import app
+
+    monkeypatch.setattr(Config, "APP_PASSWORD", None)
+    monkeypatch.setattr(live, "start_relay", lambda ih, sess: f"/api/live/relay/{sess}/index.m3u8")
+    with TestClient(app) as c:
+        monkeypatch.setattr(live, "audio_codec", lambda ih, sess: "aac")
+        assert c.post(f"/api/live/prepare/{H}/{S}").json() == {"relay": False, "audio": "aac"}
+        monkeypatch.setattr(live, "audio_codec", lambda ih, sess: "mp2")
+        r = c.post(f"/api/live/prepare/{H}/{S}").json()
+        assert r == {"relay": True, "audio": "mp2", "playlist": f"/api/live/relay/{S}/index.m3u8"}

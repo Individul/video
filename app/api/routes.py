@@ -286,6 +286,43 @@ async def live_stat(ih: str, sess: str) -> dict[str, Any]:
         raise _live_err(e) from e
 
 
+# sunete pe care hls.js + browserul le redau direct; restul (MP2, AC3…) trec prin ffmpeg
+_LIVE_NATIVE_AUDIO = {"aac", None}
+
+
+@router.post("/live/prepare/{ih}/{sess}")
+async def live_prepare(ih: str, sess: str) -> dict[str, Any]:
+    """După ce motorul are segmente: dacă sunetul nu e AAC, pornește retransmisia ffmpeg
+    și întoarce playlist-ul ei; altfel player-ul rămâne pe playlist-ul motorului."""
+    from app.sources import live
+
+    try:
+        codec = await asyncio.to_thread(live.audio_codec, ih, sess)
+        if codec in _LIVE_NATIVE_AUDIO:
+            return {"relay": False, "audio": codec}
+        playlist = await asyncio.to_thread(live.start_relay, ih, sess)
+        return {"relay": True, "audio": codec, "playlist": playlist}
+    except Exception as e:  # noqa: BLE001
+        raise _live_err(e) from e
+
+
+@router.get("/live/relay/{sess}/{name}")
+async def live_relay_file(sess: str, name: str) -> Response:
+    from fastapi.responses import FileResponse
+
+    from app.sources import live
+
+    try:
+        path = await asyncio.to_thread(live.relay_file, sess, name)
+    except SourceError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    if not path:
+        raise HTTPException(status_code=404, detail="Încă nu e gata")
+    if name.endswith(".m3u8"):
+        return Response(path.read_text(), media_type="application/vnd.apple.mpegurl", headers={"Cache-Control": "no-store"})
+    return FileResponse(path, media_type="video/mp2t")
+
+
 @router.post("/live/stop/{ih}/{sess}")
 async def live_stop(ih: str, sess: str) -> dict[str, str]:
     from app.sources import live
