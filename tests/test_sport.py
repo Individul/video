@@ -48,7 +48,7 @@ def test_feed_grupeaza_variantele_aceluiasi_meci():
     m = sport.feed()
     assert [x["match"] for x in m] == ["Athletico Paranaense - Palmeiras", "Bologna FC vs Inter"]  # cele mai noi întâi
     bol = m[1]
-    assert [v["quality"] for v in bol["variants"]] == ["720p 50fps", "1080i"]  # varianta ușoară întâi
+    assert [v["quality"] for v in bol["variants"]] == ["720p 50fps"]  # 1080i scos (doar VIP pe RGFootball)
     assert bol["variants"][0]["torrent_url"].endswith("path=1") and bol["variants"][0]["seeds"] == 16
     assert bol["variants"][0]["size"].endswith("GB")
 
@@ -64,3 +64,19 @@ def test_feed_grupeaza_variantele_aceluiasi_meci():
 def test_formate_rgfootball(title, expected):
     p = sport.parse_title(title)
     assert (p["country"], p["competition"], p["round"], p["match"], p["quality"]) == expected
+
+
+def test_meci_doar_in_hd_dispare():
+    """Un meci care are doar variante 1080p/1080i/4K nu mai apare deloc."""
+    import requests
+
+    hd_only = FEED.replace(b"720p, 50 fps", b"1080p, 50 fps")
+    class R(Resp):
+        content = hd_only
+    requests_get = requests.get
+    try:
+        requests.get = lambda *a, **k: R()
+        sport._cache.clear()
+        assert "Bologna FC vs Inter" not in [m["match"] for m in sport.feed()]
+    finally:
+        requests.get = requests_get

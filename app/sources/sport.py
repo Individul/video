@@ -22,6 +22,7 @@ _cache: dict[str, tuple[float, list[dict]]] = {}
 # „[17.10.2026, 720p, 50 fps]” — uneori fără „]” la final (titlu trunchiat)
 _BRACKET_RE = re.compile(r"\[([^\[\]]*\d{2}\.\d{2}\.\d{4}[^\[\]]*)(?:\]|$)")
 _SEP_RE = re.compile(r"\s*»\s*|\s+/\s+")
+_HD_PLUS_RE = re.compile(r"\b(1080[pi]|2160p|4k|uhd)\b", re.I)
 _EMOJI_RE = re.compile(r"[☀-➿️\U0001F000-\U0001FAFF]+")
 _CHANNEL_RE = re.compile(r"\b(HD|UHD|TV|SP@RT|SPORT|SKY|TNT|DAZN|ESPN|BT|SSB|S\.S\.BL)\b", re.I)
 _COUNTRIES = (
@@ -165,7 +166,9 @@ def feed(cat: str | None = None) -> list[dict]:
 
     groups: dict[str, dict] = {}
     for x in _fetch(cat):
-        gkey = f"{x['competition']}|{x['round']}|{x['match']}|{x['date']}".lower()
+        if _HD_PLUS_RE.search(x["quality"] or "") or _HD_PLUS_RE.search(x["name"]):
+            continue  # 1080p/1080i/4K pe RGFootball sunt doar pentru conturi VIP — indisponibile aici
+        gkey =f"{x['competition']}|{x['round']}|{x['match']}|{x['date']}".lower()
         g = groups.setdefault(gkey, {
             "key": gkey,
             "competition": x["competition"],
