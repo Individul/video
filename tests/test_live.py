@@ -142,3 +142,18 @@ def test_prepare_decides_relay_by_audio_codec(monkeypatch):
         monkeypatch.setattr(live, "audio_codec", lambda ih, sess: "mp2")
         r = c.post(f"/api/live/prepare/{H}/{S}").json()
         assert r == {"relay": True, "audio": "mp2", "playlist": f"/api/live/relay/{S}/index.m3u8"}
+
+
+def test_audio_codec_reads_first_name_from_ffprobe(monkeypatch):
+    import requests
+
+    class R:
+        text = f"#EXTINF:5,\nhttp://acestream:6878/ace/c/{H}/0.ts\n#EXTINF:5,\nhttp://acestream:6878/ace/c/{H}/1.ts\n"
+        content = b"ts"
+
+    class P:
+        stdout = "aac\n\naac\n"  # program + flux, ca în realitate
+
+    monkeypatch.setattr(requests, "get", lambda url, timeout: R())
+    monkeypatch.setattr(live.subprocess, "run", lambda *a, **k: P())
+    assert live.audio_codec(H, S) == "aac"

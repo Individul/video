@@ -218,7 +218,11 @@ def audio_codec(ih: str, sess: str) -> str | None:
              "-of", "csv=p=0", f.name],
             capture_output=True, text=True, timeout=20,
         ).stdout
-    return out.strip().strip(",") or None
+    # ffprobe scrie codecul o dată per program și o dată per flux („mp2
+
+mp2”)
+    names = [x.strip(",") for x in out.split() if x.strip(",")]
+    return names[0] if names else None
 
 
 def relay_cmd(src: str, out_dir: Path) -> list[str]:
