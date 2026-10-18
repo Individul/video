@@ -1227,6 +1227,7 @@ body.cinema-open { overflow: hidden; }
 }
 .sp-main { flex: 1; min-width: 0; }
 .sp-match { font-size: 0.98rem; font-weight: 700; overflow-wrap: anywhere; }
+.sp-date { display: inline-block; margin-left: 0.6rem; padding: 0.1rem 0.5rem; border-radius: 6px; background: rgba(255, 255, 255, 0.07); color: var(--sub); font-size: 0.76rem; font-weight: 600; vertical-align: 0.1em; white-space: nowrap; }
 .sp-meta { color: var(--sub); font-size: 0.78rem; margin-top: 2px; }
 .sp-meta:empty { display: none; }
 .sp-vars { display: flex; flex-wrap: wrap; gap: 0.4rem; justify-content: flex-end; flex-shrink: 0; max-width: 46%; }

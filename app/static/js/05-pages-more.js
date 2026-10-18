@@ -49,6 +49,9 @@ async function loadSport() {
     const long = new Date(d + "T12:00:00").toLocaleDateString("ro-RO", { weekday: "long", day: "numeric", month: "long" });
     return d === today ? `Azi · ${long}` : d === yesterday ? `Ieri · ${long}` : long[0].toUpperCase() + long.slice(1);
   };
+  // data scurtă pe fiecare rând (ex. „dum. 18 oct.”), ca să se vadă și fără titlul zilei
+  const shortDay = (d) =>
+    d ? new Date(d + "T12:00:00").toLocaleDateString("ro-RO", { weekday: "short", day: "numeric", month: "short" }) : "";
 
   const draw = () => {
     list.innerHTML = "";
@@ -67,7 +70,7 @@ async function loadSport() {
         row.innerHTML = `
           <div class="sp-comp">${flagImg(spFlag(m))}${esc(m.competition)}</div>
           <div class="sp-main">
-            <div class="sp-match">${esc(m.match)}</div>
+            <div class="sp-match">${esc(m.match)}${m.date ? `<span class="sp-date">${esc(shortDay(m.date))}</span>` : ""}</div>
             <div class="sp-meta">${[m.country, m.round].filter(Boolean).map(esc).join(" · ")}</div>
           </div>
           <div class="sp-vars"></div>`;
