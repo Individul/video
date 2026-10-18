@@ -87,7 +87,7 @@ async function loadSport() {
             const b = document.createElement("button");
             b.className = "sp-var";
             b.title = v.name;
-            b.innerHTML = `${svg(I.play, 13)} <b>${esc(v.quality || "Redă")}</b><small>${esc(v.size || "")}${v.seeds != null ? ` · ▲ ${Number(v.seeds)}` : ""}</small>`;
+            b.innerHTML = `${svg(I.play, 13)} <b>${esc(v.quality || "Redă")}</b><small>${esc(v.size || "")}${v.seeds != null ? ` · <span class="${v.seeds > 0 ? "t-seeds" : ""}">▲ ${Number(v.seeds)}</span>` : ""}</small>`;
             b.addEventListener("click", () =>
               playTorrent({ id: null, name: `${m.match} · ${m.competition}`, type: "movie" }, v, {})
             );
