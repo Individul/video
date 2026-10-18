@@ -199,6 +199,19 @@ async def torrents_search(
         raise HTTPException(status_code=502, detail=str(e)) from e
 
 
+@router.get("/sport")
+async def sport_feed() -> dict[str, Any]:
+    """Ultimele meciuri/evenimente de pe RGFootball, grupate pe meci (pagina „Sport”)."""
+    from app.sources import sport
+
+    try:
+        return {"matches": await asyncio.to_thread(sport.feed)}
+    except SourceError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    except Exception as e:  # noqa: BLE001 — Jackett/RGFootball indisponibil
+        raise HTTPException(status_code=502, detail=f"RGFootball indisponibil: {e}") from e
+
+
 @router.get("/torrents/search")
 async def torrents_free_search(q: str = Query(min_length=2, max_length=200)) -> dict[str, Any]:
     """Căutare liberă în toate trackerele (pagina „Torrente”), fără catalog."""

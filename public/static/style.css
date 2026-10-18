@@ -1211,3 +1211,35 @@ body.cinema-open { overflow: hidden; }
 .ts-page .torrent-list { max-width: 1400px; }
 .ts-note { color: var(--sub); font-size: 0.82rem; margin: -0.3rem 0 0.8rem; }
 .ts-note:empty { display: none; }
+
+/* =================== sport (RGFootball) =================== */
+.sp-comps { margin: 0 0 1.2rem !important; }
+.sp-list { display: flex; flex-direction: column; gap: 0.45rem; }
+.sp-row {
+  display: flex; align-items: center; gap: 1rem;
+  background: var(--card); border-radius: 12px; padding: 0.7rem 0.9rem;
+  max-width: 1400px;
+}
+.sp-row:hover { background: var(--card-hover); }
+.sp-comp {
+  flex-shrink: 0; width: 150px; font-size: 0.74rem; font-weight: 800; color: var(--accent);
+  text-transform: uppercase; letter-spacing: 0.4px; line-height: 1.25;
+}
+.sp-main { flex: 1; min-width: 0; }
+.sp-match { font-size: 0.98rem; font-weight: 700; overflow-wrap: anywhere; }
+.sp-meta { color: var(--sub); font-size: 0.78rem; margin-top: 2px; }
+.sp-meta:empty { display: none; }
+.sp-vars { display: flex; flex-wrap: wrap; gap: 0.4rem; justify-content: flex-end; flex-shrink: 0; max-width: 46%; }
+.sp-var {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  border: 1px solid #34373a; background: rgba(255, 255, 255, 0.04); color: var(--text);
+  border-radius: 10px; padding: 0.42rem 0.7rem; cursor: pointer; font-size: 0.82rem;
+}
+.sp-var svg { fill: var(--accent); }
+.sp-var small { color: var(--sub); font-size: 0.72rem; }
+.sp-var:hover { border-color: var(--accent); background: rgba(255, 226, 22, 0.08); }
+@media (max-width: 760px) {
+  .sp-row { flex-wrap: wrap; }
+  .sp-comp { width: 100%; }
+  .sp-vars { max-width: none; justify-content: flex-start; }
+}

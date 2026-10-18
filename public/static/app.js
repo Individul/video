@@ -270,6 +270,7 @@ function parseRoute() {
   if (seg[0] === "continue") return { view: "continue" };
   if (seg[0] === "downloads") return { view: "downloads" };
   if (seg[0] === "calendar") return { view: "calendar" };
+  if (seg[0] === "sport") return { view: "sport" };
   if (seg[0] === "torrents") {
     let q = seg.slice(1).join("/");
     try {
@@ -390,6 +391,7 @@ async function render() {
   if (r.view === "continue") return loadContinue();
   if (r.view === "downloads") return loadDownloads();
   if (r.view === "calendar") return loadCalendar();
+  if (r.view === "sport") return loadSport();
   if (r.view === "torrents") return loadTorrentSearch(r.q);
   return loadHome();
 }
@@ -719,6 +721,101 @@ async function loadContinue() {
   }
   content.innerHTML = "";
   content.appendChild(wrap);
+}
+
+/* ================= SPORT (ultimele apariții RGFootball) ================= */
+let sportComp = "all";
+
+async function loadSport() {
+  const seq = viewSeq;
+  content.innerHTML = `
+    <div class="grid-wrap sp-page">
+      <div class="view-title">Sport</div>
+      <div class="cal-hint">Ultimele meciuri și evenimente apărute pe RGFootball. Clic pe o calitate pornește înregistrarea în player.</div>
+      <div class="status">Se încarcă meciurile…</div>
+    </div>`;
+  let data;
+  try {
+    data = await api("/api/sport");
+  } catch (err) {
+    if (seq === viewSeq) content.querySelector(".status").outerHTML = `<div class="status error">${esc(err.message)}</div>`;
+    return;
+  }
+  if (seq !== viewSeq) return;
+  const matches = data.matches || [];
+  const wrap = content.querySelector(".sp-page");
+  if (!matches.length) {
+    wrap.querySelector(".status").textContent = "Nicio apariție recentă.";
+    return;
+  }
+
+  const counts = {};
+  matches.forEach((m) => (counts[m.competition] = (counts[m.competition] || 0) + 1));
+  const comps = Object.keys(counts).sort((a, b) => counts[b] - counts[a] || a.localeCompare(b));
+  if (sportComp !== "all" && !counts[sportComp]) sportComp = "all";
+  wrap.querySelector(".status").remove();
+  const chips = document.createElement("div");
+  chips.className = "q-filter sp-comps";
+  chips.innerHTML = [["all", `Toate ${matches.length}`], ...comps.map((c) => [c, `${c} ${counts[c]}`])]
+    .map(([v, l]) => `<button data-c="${esc(v)}" class="${v === sportComp ? "on" : ""}">${esc(l)}</button>`)
+    .join("");
+  wrap.appendChild(chips);
+  const list = document.createElement("div");
+  wrap.appendChild(list);
+
+  const today = new Date().toISOString().slice(0, 10);
+  const yesterday = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
+  const dayLabel = (d) => {
+    if (!d) return "Fără dată";
+    const long = new Date(d + "T12:00:00").toLocaleDateString("ro-RO", { weekday: "long", day: "numeric", month: "long" });
+    return d === today ? `Azi · ${long}` : d === yesterday ? `Ieri · ${long}` : long[0].toUpperCase() + long.slice(1);
+  };
+
+  const draw = () => {
+    list.innerHTML = "";
+    const byDay = new Map();
+    matches
+      .filter((m) => sportComp === "all" || m.competition === sportComp)
+      .forEach((m) => (byDay.has(m.date) ? byDay.get(m.date) : byDay.set(m.date, []).get(m.date)).push(m));
+    for (const [d, ms] of byDay) {
+      const sec = document.createElement("section");
+      sec.className = "cal-day" + (d === today ? " today" : "");
+      sec.innerHTML = `<div class="cal-day-head">${esc(dayLabel(d))}<span>${ms.length}</span></div><div class="sp-list"></div>`;
+      const box = sec.querySelector(".sp-list");
+      ms.forEach((m) => {
+        const row = document.createElement("div");
+        row.className = "sp-row";
+        row.innerHTML = `
+          <div class="sp-comp">${esc(m.competition)}</div>
+          <div class="sp-main">
+            <div class="sp-match">${esc(m.match)}</div>
+            <div class="sp-meta">${[m.country, m.round].filter(Boolean).map(esc).join(" · ")}</div>
+          </div>
+          <div class="sp-vars"></div>`;
+        const vars = row.querySelector(".sp-vars");
+        m.variants.forEach((v) => {
+          const b = document.createElement("button");
+          b.className = "sp-var";
+          b.title = v.name;
+          b.innerHTML = `${svg(I.play, 13)} <b>${esc(v.quality || "Redă")}</b><small>${esc(v.size || "")}${v.seeds != null ? ` · ▲ ${Number(v.seeds)}` : ""}</small>`;
+          b.addEventListener("click", () =>
+            playTorrent({ id: null, name: `${m.match} · ${m.competition}`, type: "movie" }, v, {})
+          );
+          vars.appendChild(b);
+        });
+        box.appendChild(row);
+      });
+      list.appendChild(sec);
+    }
+  };
+  chips.querySelectorAll("button").forEach((b) =>
+    b.addEventListener("click", () => {
+      sportComp = b.dataset.c;
+      chips.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
+      draw();
+    })
+  );
+  draw();
 }
 
 /* ================= CĂUTARE TORRENTE (direct în trackere, fără catalog) ================= */
