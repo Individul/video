@@ -936,12 +936,14 @@ async function playLive({ name, ref, url }) {
   const video = playerBox.querySelector("#video");
   $("#buffer").classList.remove("hidden");
 
-  // statistici: peers, viteză, prebuffering
+  // statistici: peers, viteză, prebuffering; serverul raportează și segmentele cu găuri în audio
+  const gapSegs = new Set();
   const refreshLive = async () => {
     if (!ctx.alive) return;
     try {
       const s = await api(`/api/live/stat/${sess.infohash}/${sess.session}`);
       if (!ctx.alive) return;
+      (s.audio_gaps || []).forEach((n) => gapSegs.add(n));
       const pre = s.status === "prebuf" ? ` · prebuffering ${s.progress || 0}%` : "";
       $("#cin-mini").innerHTML = `<span class="dot-${s.peers > 2 ? "ok" : s.peers ? "mid" : "bad"}"></span>${sess.is_live ? "LIVE · " : ""}${s.peers} peers · ↓ ${fmtMbit(s.down_bps)} Mbit/s${pre}`;
     } catch (_) {}
@@ -991,13 +993,19 @@ async function playLive({ name, ref, url }) {
       if (!ctx.alive || (!force && Date.now() - lastRebuild < 15000)) return;
       lastRebuild = Date.now();
       started = false;
+      // reluăm din același loc: instanța nouă numără timpul de la zero, așa că ținem minte
+      // segmentul curent (numărul lui) și cât am înaintat în el
+      const resume = curFrag ? { sn: curFrag.sn, off: Math.max(0, video.currentTime - curFrag.start) } : null;
       try {
         hls.destroy();
       } catch (_) {}
-      attach();
+      attach(resume);
     };
-    const attach = () => {
+    const handledGaps = new Set();
+    let curFrag = null;
+    const attach = (resume = null) => {
       hls = new Hls({
+        autoStartLoad: !resume,
         liveSyncDurationCount: 5, // pornește ~25 s în urma transmisiei: rezervă pentru căderile P2P
         maxBufferLength: 60,
         backBufferLength: 30,
@@ -1010,6 +1018,28 @@ async function playLive({ name, ref, url }) {
       hls.loadSource(sess.playlist);
       hls.attachMedia(video);
       hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
+      if (resume) {
+        hls.once(Hls.Events.LEVEL_LOADED, (_, d) => {
+          const f = (d.details.fragments || []).find((x) => x.sn === resume.sn);
+          hls.startLoad(f ? f.start + resume.off : -1);
+        });
+      }
+      // a trecut de un segment cu gaură audio → resincronizare automată (o dată per gaură)
+      hls.on(Hls.Events.FRAG_CHANGED, (_, d) => {
+        curFrag = d.frag;
+        const sn = d.frag && d.frag.sn;
+        if (typeof sn !== "number") return;
+        for (const g of gapSegs) {
+          if (sn > g && !handledGaps.has(g)) {
+            gapSegs.forEach((x) => x < sn && handledGaps.add(x));
+            if (sn - g <= 3) {
+              console.warn(`live: gaură audio în segmentul ${g}, resincronizez`);
+              rebuild(true);
+            }
+            break;
+          }
+        }
+      });
       hls.on(Hls.Events.ERROR, (_, d) => {
         if (!ctx.alive) return;
         if (d.type === Hls.ErrorTypes.MEDIA_ERROR) {

@@ -63,3 +63,37 @@ def test_start_accepts_live_playlist(monkeypatch):
 def test_manifest_rejects_unknown_mode():
     with pytest.raises(SourceError):
         live.manifest(H, S, "x")
+
+
+def test_audio_gaps_detection():
+    frame = 1024 / 48000
+    clean = [100 + i * frame for i in range(230)]
+    assert not live.audio_gaps(clean)
+    assert not live.audio_gaps(clean, prev_last=100 - frame)
+    holed = clean[:50] + [t + 1.0 for t in clean[50:]]  # ~1 s lipsă, ca în segmentul 411
+    assert live.audio_gaps(holed)
+    assert live.audio_gaps(clean, prev_last=99.5)  # gaură între segmente
+    assert not live.audio_gaps([])
+
+
+def test_segments_with_gaps_reach_stat(monkeypatch):
+    frame = 1024 / 48000
+    good = [i * frame for i in range(235)]
+    pts = {1: good, 2: [t + 5 for t in good], 3: [t + 10 for t in good[:40]] + [t + 11 for t in good[40:]]}
+    monkeypatch.setattr(live, "_audio_pts", lambda data: pts[int(data)])
+
+    class R:
+        def __init__(self, n):
+            self.content = str(n).encode()
+
+    import requests
+
+    monkeypatch.setattr(requests, "get", lambda url, timeout: R(url.rsplit("/", 1)[1].split(".")[0]))
+    playlist = "".join(f"#EXTINF:5,\nhttp://acestream:6878/ace/c/{H}/{n}.ts\n" for n in (1, 2, 3, 4))
+    live._audio.clear()
+    live._schedule_audio_check(S, playlist)
+    live._audio_pool.submit(lambda: None).result()  # așteaptă verificările din coadă
+    assert live.audio_gap_segments(S) == [3]
+    live._schedule_audio_check(S, playlist)  # segmentele deja verificate nu se reiau
+    live._audio_pool.submit(lambda: None).result()
+    assert live.audio_gap_segments(S) == [3]
