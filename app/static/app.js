@@ -836,17 +836,20 @@ async function playLive({ name, ref }) {
     api(`/api/live/stop/${sess.infohash}/${sess.session}`, { method: "POST", keepalive: true }).catch(() => {});
   if (ps !== playSeq) return stopSession();
 
+  // hls.js peste tot unde merge (Chrome/Edge au acum HLS nativ, dar slab la live);
+  // HLS-ul nativ rămâne doar pentru Safari/iOS
   let Hls = null;
-  const video0 = document.createElement("video");
-  if (!video0.canPlayType("application/vnd.apple.mpegurl")) {
-    try {
-      Hls = await loadHls();
-    } catch (err) {
+  try {
+    Hls = await loadHls();
+  } catch (_) {}
+  if (ps !== playSeq) return stopSession();
+  if (!Hls || !Hls.isSupported()) {
+    Hls = null;
+    if (!document.createElement("video").canPlayType("application/vnd.apple.mpegurl")) {
       stopSession();
-      if (ps === playSeq) playerBox.innerHTML = `<div class="cin-status error">${esc(err.message)}</div>`;
+      playerBox.innerHTML = `<div class="cin-status error">Browserul nu poate reda transmisia (HLS)</div>`;
       return;
     }
-    if (ps !== playSeq) return stopSession();
   }
 
   const ctx = { alive: true, onStop: [] };
@@ -873,6 +876,9 @@ async function playLive({ name, ref }) {
   if (Hls) {
     hls = new Hls({
       liveSyncDurationCount: 6, // ~30 s în urma transmisiei: rezervă pentru căderile P2P
+      maxBufferLength: 60,
+      backBufferLength: 30,
+      lowLatencyMode: false,
       manifestLoadingMaxRetry: 30,
       manifestLoadingRetryDelay: 2000,
       levelLoadingMaxRetry: 10,
