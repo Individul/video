@@ -56,3 +56,25 @@ def test_parse_torznab_items():
     second = items[1]
     assert second["magnet"] == "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567"
     assert second["seeds"] == 7
+
+
+def test_lista_indexeri_rezerva_nu_ramane_10_minute(monkeypatch):
+    """Jackett care tocmai pornește nu trebuie să blocheze lista reală de surse 10 minute."""
+    import time
+
+    from app.config import Config
+    from app.sources import torrents as t
+
+    monkeypatch.setattr(Config, "TORZNAB_URL", "http://jackett:9117")
+    monkeypatch.setattr(Config, "TORZNAB_API_KEY", "k")
+    monkeypatch.setattr(t, "_TORZNAB_INDEXER_CACHE", None)
+    monkeypatch.setattr(t, "_TORZNAB_INDEXER_TS", 0.0)
+
+    import requests
+
+    def down(*a, **k):
+        raise requests.ConnectionError("Jackett pornește")
+
+    monkeypatch.setattr(requests, "get", down)
+    assert t._torznab_indexer_list() == [("all", "jackett")]
+    assert time.time() - t._TORZNAB_INDEXER_TS > 500  # expiră în ~30 s, nu în 10 min

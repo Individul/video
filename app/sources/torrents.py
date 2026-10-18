@@ -364,7 +364,11 @@ def _torznab_indexer_list() -> list[tuple[str, str]]:
     except Exception:  # noqa: BLE001 — cădem pe „all"
         pass
     if not out:
+        # Jackett indisponibil (ex. tocmai pornește): rezerva „all” se ține doar 30 s,
+        # nu 10 min — altfel căutările ar rămâne lente mult după ce Jackett și-a revenit
         out = [(Config.TORZNAB_INDEXER or "all", "jackett")]
+        _TORZNAB_INDEXER_CACHE, _TORZNAB_INDEXER_TS = out, _time.time() - 570
+        return out
     _TORZNAB_INDEXER_CACHE, _TORZNAB_INDEXER_TS = out, _time.time()
     return out
 
