@@ -336,6 +336,7 @@ class TmdbSource(BaseSource):
             status=_STATUS_RO.get(data.get("status") or "", data.get("status")),
             certification=_certification(data, is_tv),
             recommendations=self._related(media_type, tmdb_id, "recommendations"),
+            imdb_id=(data.get("external_ids") or {}).get("imdb_id") if is_tv else data.get("imdb_id"),
         )
 
     def season_episodes(self, source_url: str, season: int) -> list[EpisodeInfo]:

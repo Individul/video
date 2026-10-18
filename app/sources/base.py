@@ -56,6 +56,7 @@ class TitleDetail:
     status: str | None = None  # „Lansat”, „În desfășurare”, „Încheiat”...
     certification: str | None = None  # limita de vârstă: „16+”, „R”...
     recommendations: list[dict] = field(default_factory=list)  # hit-uri „Recomandări” (TMDB)
+    imdb_id: str | None = None  # legătura cu Kinopoisk (rating KP + IMDb)
 
 
 class BaseSource(ABC):

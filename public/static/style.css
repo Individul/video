@@ -1192,3 +1192,8 @@ body.cinema-open { overflow: hidden; }
   .cin-vol input { display: none; }
   .cin-pop { right: 0.6rem !important; }
 }
+
+/* ratinguri pe pagina filmului: TMDB · КП · IMDb */
+.d-rate.kp { color: #ff8a2b; text-decoration: none; }
+.d-rate.kp:hover small { color: #ff8a2b; }
+.d-rate.imdb { color: #f5c518; }

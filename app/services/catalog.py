@@ -7,7 +7,7 @@ from app.models import Episode, Title, TitleType, utcnow
 from app.sources.base import SearchHit, TitleDetail
 
 # crește când detaliile salvate primesc câmpuri noi: titlurile vechi se reîmprospătează o dată
-EXTRA_VERSION = 2
+EXTRA_VERSION = 3  # 3: imdb_id (pentru Kinopoisk)
 
 
 async def _get_or_create_title(session: AsyncSession, source: str, source_url: str, name: str) -> Title:
@@ -89,6 +89,11 @@ async def upsert_title_detail(session: AsyncSession, detail: TitleDetail) -> Tit
     if detail.title_type:
         title.title_type = TitleType(detail.title_type)
     title.detail_loaded_at = utcnow()
+    # datele Kinopoisk (cerute separat, cu limită zilnică) supraviețuiesc reîmprospătării TMDB
+    try:
+        kept_kp = (json.loads(title.extra) if title.extra else {}).get("kp")
+    except (TypeError, ValueError):
+        kept_kp = None
     title.extra = json.dumps(
         {
             "trailer": detail.trailer,
@@ -103,7 +108,9 @@ async def upsert_title_detail(session: AsyncSession, detail: TitleDetail) -> Tit
             "status": detail.status,
             "certification": detail.certification,
             "recommendations": detail.recommendations,
+            "imdb_id": detail.imdb_id,
             "v": EXTRA_VERSION,
+            **({"kp": kept_kp} if kept_kp else {}),
         },
         ensure_ascii=False,
     )

@@ -426,6 +426,38 @@ async def _refresh_if_stale(db: AsyncSession, title: Title) -> Title:
     return title
 
 
+_KP_TTL = 7 * 86400  # ratingurile se schimbă încet; o cerere pe săptămână per titlu
+
+
+async def _ensure_kinopoisk(db: AsyncSession, title: Title) -> dict | None:
+    """Rating KP/IMDb + descriere din Kinopoisk, cache-uite în extra["kp"] (și „negăsit”,
+    ca să nu repetăm cererea). La limită depășită păstrăm ce aveam și reîncercăm altă dată."""
+    import time
+
+    from app.sources import kinopoisk
+
+    try:
+        extra = json.loads(title.extra) if title.extra else {}
+    except (TypeError, ValueError):
+        extra = {}
+    cached = extra.get("kp")
+    if not Config.KP_API_KEY or title.source != "tmdb":
+        return cached if cached and not cached.get("none") else None
+    if cached and time.time() - cached.get("at", 0) < _KP_TTL:
+        return None if cached.get("none") else cached
+    try:
+        res = await asyncio.to_thread(
+            kinopoisk.lookup, extra.get("imdb_id"), title.name, title.name_original, title.year
+        )
+    except Exception:  # noqa: BLE001 — limită/rețea: Kinopoisk e opțional, pagina merge și fără
+        return cached if cached and not cached.get("none") else None
+    fresh = {**res, "at": time.time()} if res else {"none": True, "at": time.time()}
+    extra["kp"] = fresh
+    title.extra = json.dumps(extra, ensure_ascii=False)
+    await db.commit()
+    return None if fresh.get("none") else fresh
+
+
 @router.get("/title/{title_id}")
 async def title_detail(
     title_id: int,
@@ -440,7 +472,12 @@ async def title_detail(
     if title is None:
         raise HTTPException(status_code=404, detail="Titlul nu exista")
     title = await _refresh_if_stale(db, title)
+    kp = await _ensure_kinopoisk(db, title)
     d = _title_to_dict(title, with_details=True)
+    if kp:
+        d["kp"] = {k: kp.get(k) for k in ("id", "rating_kp", "votes_kp", "rating_imdb", "votes_imdb", "url")}
+        if not d.get("description") and kp.get("description"):
+            d["description"] = kp["description"]  # TMDB n-are descriere în rusă -> cea de pe Kinopoisk
     d["similar"] = await _hits_with_ids(db, d["similar"])
     d["recommendations"] = await _hits_with_ids(db, d["recommendations"])
     await db.commit()

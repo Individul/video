@@ -1260,8 +1260,15 @@ function fmtRuntime(min, isSeries) {
 /* antetul paginii de film, ca în Lampa: an + țară, titlu mare, slogan, etichete, durată + genuri */
 function detailHeadHtml(t, isSeries) {
   const pre = [t.year, ...(t.countries || []).map(countryName)].filter(Boolean).join(", ");
+  // ratingurile: TMDB · Kinopoisk · IMDb (ultimele două vin din Kinopoisk, dacă e configurat)
+  const kp = t.kp || {};
+  const rate = (v, label, cls = "") => (v ? `<span class="d-rate ${cls}">${Number(v).toFixed(1)} <small>${label}</small></span>` : "");
   const badges = [
-    t.rating ? `<span class="d-rate">${Number(t.rating).toFixed(1)} <small>TMDB</small></span>` : "",
+    rate(t.rating, "TMDB"),
+    kp.rating_kp
+      ? `<a class="d-rate kp" href="${escUrl(kp.url)}" target="_blank" rel="noopener" title="Kinopoisk${kp.votes_kp ? ` · ${Number(kp.votes_kp).toLocaleString("ru-RU")} voturi` : ""}">${Number(kp.rating_kp).toFixed(1)} <small>КП</small></a>`
+      : "",
+    rate(kp.rating_imdb, "IMDb", "imdb"),
     t.certification ? `<span class="d-box">${esc(t.certification)}</span>` : "",
     t.status ? `<span class="d-box">${esc(t.status)}</span>` : "",
     `<span class="d-box soft">${isSeries ? "serial" : "film"}</span>`,

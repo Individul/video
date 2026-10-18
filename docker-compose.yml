@@ -47,6 +47,7 @@ services:
       - TORZNAB_URL=http://jackett:9117
       - TORZNAB_API_KEY=${TORZNAB_API_KEY:-}
       - OS_API_KEY=${OS_API_KEY:-}
+      - KP_API_KEY=${KP_API_KEY:-}
     volumes:
       - ./data:/data
     mem_limit: 384m          # ffmpeg (extragerea subtitrărilor) rulează tot aici
