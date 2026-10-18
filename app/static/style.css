@@ -1266,3 +1266,8 @@ body.cinema-open { overflow: hidden; }
 .cin-pop.audio-pop { right: 10.5rem; min-width: 260px; max-width: 380px; }
 .cin-pop .audio-note:empty { display: none; }
 .cin-pop .audio-note { margin: 0.5rem 0.4rem 0; font-size: 0.75rem; }
+
+/* =================== sport: căutare =================== */
+.sp-search { margin-top: 0.2rem; }
+#sp-note a { color: var(--accent); text-decoration: none; font-weight: 600; }
+#sp-note a:hover { text-decoration: underline; }

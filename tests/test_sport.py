@@ -117,3 +117,15 @@ def test_cautare_trimite_q_la_jackett_si_cache_separat(monkeypatch):
     search = [u for u in urls if "t=search" in u]
     assert len(search) == 2
     assert "q=" not in search[0] and "q=Bologna+Inter" in search[1]
+
+
+def test_champions_league_faza_tine_de_etapa():
+    p = sport.parse_title("UEFA Champions League 2026–27 » League Phase » Matchday 2 » AS Roma vs Real Madrid "
+                          "[14.10.2026, 720p, 50 fps, H.264, RUS/STD, HDTVRip]")
+    assert (p["competition"], p["country"], p["round"], p["match"]) == (
+        "UEFA Champions League", "", "League Phase · Matchday 2", "AS Roma vs Real Madrid")
+
+
+def test_group_stage_lipit_de_etapa():
+    p = sport.parse_title("UEFA Europa League 2026-27 » Group Stage » Matchday 1 » Lazio vs Ajax [01.10.2026, 720p]")
+    assert (p["competition"], p["round"], p["match"]) == ("UEFA Europa League", "Group Stage · Matchday 1", "Lazio vs Ajax")

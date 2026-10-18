@@ -29,7 +29,9 @@ _COUNTRIES = (
     "Turkey", "Turkiye", "Russia", "Ukraine", "Belgium", "Brazil", "Argentina", "USA",
 )
 _DATE_RE = re.compile(r"(\d{2})\.(\d{2})\.(\d{4})")
-_SEASON_RE = re.compile(r"\s+\d{4}(?:[-/]\d{2,4})?\s*$")
+_SEASON_RE = re.compile(r"\s+\d{4}(?:[-/–]\d{2,4})?\s*$")  # și „2026–27” cu liniuță lungă
+# faza dinaintea etapei („UEFA Champions League » League Phase » Matchday 2”) ține de etapă, nu e liga
+_PHASE_RE = re.compile(r"\b(league phase|group stage|groups?|knockout|play-?offs?|qualifying|qualification|preliminary)\b", re.I)
 # a doua bucată e etapa, nu liga („Matchday 31”, „07. Round”, „1/8 Final”)
 # (fără „^\d+\.” — ar prinde „2. Bundesliga”; „07. Round” are oricum cuvântul „Round”)
 _ROUND_RE = re.compile(r"\b(round|matchday|tour|week|day|stage|group|final|тур)\b", re.I)
@@ -84,6 +86,14 @@ def parse_title(title: str) -> dict:
         if len(parts) > 2 and _CHANNEL_RE.search(parts[-1]):
             parts = parts[:-1]  # „... / SKY SP@RT UHD” — canalul TV, nu meciul
         ri = next((i for i, p in enumerate(parts) if i > 0 and _ROUND_RE.search(p)), None)
+        # „Group Stage » Matchday 1”: faza a fost luată drept etapă — o lipim de etapa reală
+        if ri is not None and ri + 1 < len(parts) - 1 and _PHASE_RE.search(parts[ri]) and _ROUND_RE.search(parts[ri + 1]):
+            parts[ri] = f"{parts[ri]} · {parts.pop(ri + 1)}"
+        # „League Phase » Matchday 2”: faza nu e recunoscută ca etapă, dar ține de ea, nu de ligă
+        elif ri is not None and ri >= 2 and _PHASE_RE.search(parts[ri - 1]):
+            parts[ri] = f"{parts[ri - 1]} · {parts[ri]}"
+            del parts[ri - 1]
+            ri -= 1
         if ri is not None:
             rnd = parts[ri]
             comp_raw = _SEASON_RE.sub("", parts[ri - 1]) or parts[ri - 1]
