@@ -937,13 +937,13 @@ async function playLive({ name, ref, url }) {
   $("#buffer").classList.remove("hidden");
 
   // statistici: peers, viteză, prebuffering; serverul raportează și segmentele cu găuri în audio
-  const gapSegs = new Set();
+  const gapSegs = new Map(); // nr. segment -> secunde de audio lipsă
   const refreshLive = async () => {
     if (!ctx.alive) return;
     try {
       const s = await api(`/api/live/stat/${sess.infohash}/${sess.session}`);
       if (!ctx.alive) return;
-      (s.audio_gaps || []).forEach((n) => gapSegs.add(n));
+      (s.audio_gaps || []).forEach(([n, sec]) => gapSegs.set(n, sec));
       const pre = s.status === "prebuf" ? ` · prebuffering ${s.progress || 0}%` : "";
       $("#cin-mini").innerHTML = `<span class="dot-${s.peers > 2 ? "ok" : s.peers ? "mid" : "bad"}"></span>${sess.is_live ? "LIVE · " : ""}${s.peers} peers · ↓ ${fmtMbit(s.down_bps)} Mbit/s${pre}`;
     } catch (_) {}
@@ -1002,6 +1002,7 @@ async function playLive({ name, ref, url }) {
       attach(resume);
     };
     const handledGaps = new Set();
+    let lastGapSync = 0;
     let curFrag = null;
     const attach = (resume = null) => {
       hls = new Hls({
@@ -1029,13 +1030,17 @@ async function playLive({ name, ref, url }) {
         curFrag = d.frag;
         const sn = d.frag && d.frag.sn;
         if (typeof sn !== "number") return;
-        for (const g of gapSegs) {
-          if (sn > g && !handledGaps.has(g)) {
-            gapSegs.forEach((x) => x < sn && handledGaps.add(x));
-            if (sn - g <= 3) {
-              console.warn(`live: gaură audio în segmentul ${g}, resincronizez`);
-              rebuild(true);
-            }
+        // nu orice gaură strică sunetul: le notăm pe toate, dar resincronizăm doar la cele
+        // mari (≥ 1 s), cel mult o dată la 90 s — altfel întreruperile ar fi prea dese
+        for (const [g, sec] of gapSegs) {
+          if (sn <= g || handledGaps.has(g)) continue;
+          handledGaps.add(g);
+          if (sn - g > 3) continue;
+          const big = sec >= 1 && Date.now() - lastGapSync > 90000;
+          console.warn(`live: gaură audio ${sec}s în segmentul ${g}${big ? ", resincronizez" : ""}`);
+          if (big) {
+            lastGapSync = Date.now();
+            rebuild(true);
             break;
           }
         }

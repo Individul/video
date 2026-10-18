@@ -99,18 +99,20 @@ def manifest(ih: str, sess: str, mode: str = "r") -> str:
 # ce segmente au găuri; el se resincronizează singur după ce le trece.
 
 GAP_S = 0.1  # un cadru AAC la 48 kHz are ~21 ms; peste 100 ms fără audio = gaură
-_audio: dict[str, dict] = {}  # sesiune -> {"seen": set, "gaps": list[int], "last": {nr: (prima, ultima)}, "ts": t}
+_audio: dict[str, dict] = {}  # sesiune -> {"seen": set, "gaps": [[nr, s]], "last": {nr: (prima, ultima)}, "ts": t}
 _audio_lock = threading.Lock()
 _audio_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="live-audio")
 
 
-def audio_gaps(pts: list[float], prev_last: float | None = None) -> bool:
-    """True dacă lista de timpi ai pachetelor audio are o gaură (în segment sau față de cel anterior)."""
+def audio_gaps(pts: list[float], prev_last: float | None = None) -> float:
+    """Cea mai mare gaură audio (secunde) din segment sau față de cel anterior; 0 dacă nu e."""
     if not pts:
-        return False
-    if prev_last is not None and pts[0] - prev_last > GAP_S:
-        return True
-    return any(b - a > GAP_S for a, b in zip(pts, pts[1:]))
+        return 0.0
+    diffs = [b - a for a, b in zip(pts, pts[1:])]
+    if prev_last is not None:
+        diffs.append(pts[0] - prev_last)
+    worst = max(diffs, default=0.0)
+    return round(worst, 2) if worst > GAP_S else 0.0
 
 
 def _audio_pts(data: bytes) -> list[float]:
@@ -139,8 +141,9 @@ def _check_segment(sess: str, nr: int, url: str) -> None:
             return
         prev = st["last"].get(nr - 1)
         st["last"][nr] = (pts[0], pts[-1])
-        if audio_gaps(pts, prev[1] if prev else None):
-            st["gaps"] = (st["gaps"] + [nr])[-30:]
+        gap = audio_gaps(pts, prev[1] if prev else None)
+        if gap:
+            st["gaps"] = (st["gaps"] + [[nr, gap]])[-30:]
         for old in [k for k in st["last"] if k < nr - 40]:
             del st["last"][old]
 
@@ -163,7 +166,8 @@ def _schedule_audio_check(sess: str, playlist: str) -> None:
         _audio_pool.submit(_check_segment, sess, n, u)
 
 
-def audio_gap_segments(sess: str) -> list[int]:
+def audio_gap_segments(sess: str) -> list[list]:
+    """[[nr_segment, secunde_lipsă], ...]"""
     with _audio_lock:
         st = _audio.get(sess)
         return list(st["gaps"]) if st else []

@@ -71,8 +71,8 @@ def test_audio_gaps_detection():
     assert not live.audio_gaps(clean)
     assert not live.audio_gaps(clean, prev_last=100 - frame)
     holed = clean[:50] + [t + 1.0 for t in clean[50:]]  # ~1 s lipsă, ca în segmentul 411
-    assert live.audio_gaps(holed)
-    assert live.audio_gaps(clean, prev_last=99.5)  # gaură între segmente
+    assert live.audio_gaps(holed) == 1.02
+    assert live.audio_gaps(clean, prev_last=99.5) == 0.5  # gaură între segmente
     assert not live.audio_gaps([])
 
 
@@ -93,10 +93,10 @@ def test_segments_with_gaps_reach_stat(monkeypatch):
     live._audio.clear()
     live._schedule_audio_check(S, playlist)
     live._audio_pool.submit(lambda: None).result()  # așteaptă verificările din coadă
-    assert live.audio_gap_segments(S) == [3]
+    assert live.audio_gap_segments(S) == [[3, 1.02]]
     live._schedule_audio_check(S, playlist)  # segmentele deja verificate nu se reiau
     live._audio_pool.submit(lambda: None).result()
-    assert live.audio_gap_segments(S) == [3]
+    assert live.audio_gap_segments(S) == [[3, 1.02]]
 
 
 def test_audio_pts_parses_ffprobe_csv(monkeypatch):
