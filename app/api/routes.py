@@ -297,11 +297,11 @@ async def live_prepare(ih: str, sess: str) -> dict[str, Any]:
     from app.sources import live
 
     try:
-        codec = await asyncio.to_thread(live.audio_codec, ih, sess)
-        if codec in _LIVE_NATIVE_AUDIO:
-            return {"relay": False, "audio": codec}
+        info = await asyncio.to_thread(live.stream_info, ih, sess)
+        if info["audio"] in _LIVE_NATIVE_AUDIO:
+            return {"relay": False, **info}
         playlist = await asyncio.to_thread(live.start_relay, ih, sess)
-        return {"relay": True, "audio": codec, "playlist": playlist}
+        return {"relay": True, **info, "playlist": playlist}
     except Exception as e:  # noqa: BLE001
         raise _live_err(e) from e
 

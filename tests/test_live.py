@@ -137,14 +137,14 @@ def test_prepare_decides_relay_by_audio_codec(monkeypatch):
     monkeypatch.setattr(Config, "APP_PASSWORD", None)
     monkeypatch.setattr(live, "start_relay", lambda ih, sess: f"/api/live/relay/{sess}/index.m3u8")
     with TestClient(app) as c:
-        monkeypatch.setattr(live, "audio_codec", lambda ih, sess: "aac")
-        assert c.post(f"/api/live/prepare/{H}/{S}").json() == {"relay": False, "audio": "aac"}
-        monkeypatch.setattr(live, "audio_codec", lambda ih, sess: "mp2")
+        monkeypatch.setattr(live, "stream_info", lambda ih, sess: {"audio": "aac", "interlaced": False})
+        assert c.post(f"/api/live/prepare/{H}/{S}").json() == {"relay": False, "audio": "aac", "interlaced": False}
+        monkeypatch.setattr(live, "stream_info", lambda ih, sess: {"audio": "mp2", "interlaced": True})
         r = c.post(f"/api/live/prepare/{H}/{S}").json()
-        assert r == {"relay": True, "audio": "mp2", "playlist": f"/api/live/relay/{S}/index.m3u8"}
+        assert r == {"relay": True, "audio": "mp2", "interlaced": True, "playlist": f"/api/live/relay/{S}/index.m3u8"}
 
 
-def test_audio_codec_reads_first_name_from_ffprobe(monkeypatch):
+def test_stream_info_reads_audio_and_interlacing(monkeypatch):
     import requests
 
     class R:
@@ -152,8 +152,10 @@ def test_audio_codec_reads_first_name_from_ffprobe(monkeypatch):
         content = b"ts"
 
     class P:
-        stdout = "aac\n\naac\n"  # program + flux, ca în realitate
+        stdout = ('{"streams": [{"codec_type": "video", "codec_name": "h264", "field_order": "tt"},'
+                  ' {"codec_type": "audio", "codec_name": "mp2"}]}')
 
     monkeypatch.setattr(requests, "get", lambda url, timeout: R())
     monkeypatch.setattr(live.subprocess, "run", lambda *a, **k: P())
-    assert live.audio_codec(H, S) == "aac"
+    assert live.stream_info(H, S) == {"audio": "mp2", "interlaced": True}
+    assert live.audio_codec(H, S) == "mp2"

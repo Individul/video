@@ -201,26 +201,37 @@ _relay: dict = {}  # {"sess", "proc", "dir", "seen"} — un singur utilizator, o
 _relay_lock = threading.Lock()
 
 
-def audio_codec(ih: str, sess: str) -> str | None:
-    """Codecul audio al transmisiei (din primul segment complet al motorului)."""
+def stream_info(ih: str, sess: str) -> dict:
+    """Sunetul și tipul video-ului transmisiei, din primul segment complet al motorului:
+    {"audio": "aac" | "mp2" | ..., "interlaced": bool}."""
     import requests
 
     _check(ih, sess)
     m = requests.get(f"{engine_url()}/ace/m/{ih}/{sess}.m3u8", timeout=30).text
     segs = re.findall(r"https?://\S+\.ts", m)
     if len(segs) < 2:
-        return None
+        return {"audio": None, "interlaced": False}
     with tempfile.NamedTemporaryFile(suffix=".ts") as f:
         f.write(requests.get(segs[0], timeout=30).content)
         f.flush()
         out = subprocess.run(
-            ["ffprobe", "-v", "quiet", "-select_streams", "a:0", "-show_entries", "stream=codec_name",
-             "-of", "csv=p=0", f.name],
+            ["ffprobe", "-v", "quiet", "-show_entries", "stream=codec_type,codec_name,field_order",
+             "-of", "json", f.name],
             capture_output=True, text=True, timeout=20,
         ).stdout
-    # ffprobe scrie codecul o dată per program și o dată per flux (de două ori)
-    names = [x.strip(",") for x in out.split() if x.strip(",")]
-    return names[0] if names else None
+    try:
+        streams = json.loads(out or "{}").get("streams") or []
+    except ValueError:
+        streams = []
+    audio = next((x.get("codec_name") for x in streams if x.get("codec_type") == "audio"), None)
+    video = next((x for x in streams if x.get("codec_type") == "video"), {})
+    # 1080i de satelit (tt/bb/tb/bt): decodorul video al browserului îl refuză adesea, iar
+    # serverul (2 vCPU) nu-l poate converti în timp real — player-ul afișează un mesaj clar
+    return {"audio": audio, "interlaced": video.get("field_order") in ("tt", "bb", "tb", "bt")}
+
+
+def audio_codec(ih: str, sess: str) -> str | None:
+    return stream_info(ih, sess)["audio"]
 
 
 def relay_cmd(src: str, out_dir: Path) -> list[str]:

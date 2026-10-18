@@ -247,9 +247,11 @@ async function playLive({ name, ref, url }) {
 
   // sunet pe care browserul nu-l știe (MP2 la canalele prin satelit, AC3): serverul retransmite
   // prin ffmpeg cu sunetul în AAC; video-ul și rezerva rămân aceleași
+  let streamInfo = {};
   try {
     const prep = await api(`/api/live/prepare/${sess.infohash}/${sess.session}`, { method: "POST" });
     if (!ctx.alive) return;
+    streamInfo = prep;
     if (prep.relay) {
       console.warn(`live: sunet ${prep.audio} → retransmisie cu AAC`);
       sess.playlist = prep.playlist;
@@ -284,6 +286,7 @@ async function playLive({ name, ref, url }) {
       attach(resume);
     };
     const handledGaps = new Set();
+    let decodeFails = 0;
     let lastGapSync = 0;
     let curFrag = null;
     const attach = (resume = null) => {
@@ -330,7 +333,26 @@ async function playLive({ name, ref, url }) {
       hls.on(Hls.Events.ERROR, (_, d) => {
         if (!ctx.alive) return;
         if (d.type === Hls.ErrorTypes.MEDIA_ERROR) {
-          console.warn("live: eroare media", d.details);
+          console.warn("live: eroare media", d.details, video.error ? video.error.message : "");
+          // decodorul video al browserului refuză fluxul (des la 1080i de satelit): reîncercările
+          // n-ajută, iar serverul nu-l poate converti în timp real — spunem clar ce se întâmplă
+          if (video.error && /DECODE/i.test(video.error.message) && ++decodeFails >= 2) {
+            ctx.alive = false;
+            clearInterval(statTimer);
+            try {
+              hls.destroy();
+            } catch (_) {}
+            stopSession();
+            $("#buffer")?.classList.add("hidden");
+            const box = playerBox.querySelector("#video-error");
+            if (box) {
+              box.innerHTML = streamInfo.interlaced
+                ? "Browserul nu poate decoda video-ul acestui canal (1080i întrețesut, ca la TV prin satelit), iar serverul nu-l poate converti în timp real.<br>Încearcă alt link pentru același meci — de obicei există variante 720p — sau deschide-l în Ace Stream pe calculator."
+                : "Browserul nu poate decoda video-ul acestui canal. Încearcă alt link pentru același meci sau deschide-l în Ace Stream pe calculator.";
+              box.classList.remove("hidden");
+            }
+            return;
+          }
           if (d.fatal || d.details === "bufferAppendError" || d.details === "fragParsingError") rebuild();
           return;
         }
