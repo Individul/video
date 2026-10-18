@@ -1163,6 +1163,14 @@ function enterCinema(t) {
   $("#cin-mini").textContent = "";
   $("#cin-tab-eps").classList.toggle("hidden", t.type !== "series");
   if (cinemaOpen()) return;
+  if (!document.getElementById("player")) {
+    // pagini fără player propriu (ex. „Torrente”): modul cinema își creează unul temporar
+    const p = document.createElement("div");
+    p.id = "player";
+    p.className = "player-box";
+    p.dataset.temp = "1";
+    $("#cin-stage").appendChild(p);
+  }
   moveIntoCinema("player", $("#cin-stage"));
   moveIntoCinema("torrents", $("#cin-pane-versions"));
   if (t.type === "series") moveIntoCinema("tab-eps", $("#cin-pane-eps"));
@@ -1177,7 +1185,8 @@ function exitCinema() {
   stopStatsPoll();
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   const p = $("#player");
-  if (p) p.innerHTML = "";
+  if (p && p.dataset.temp) p.remove(); // creat doar pentru modul cinema — nu rămâne dublură
+  else if (p) p.innerHTML = "";
   $("#cin-files").innerHTML = "";
   ["player", "torrents", "tab-eps"].forEach(restoreFromCinema);
   setCinemaPanel(null);
