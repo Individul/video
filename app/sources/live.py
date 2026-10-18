@@ -122,7 +122,8 @@ def _audio_pts(data: bytes) -> list[float]:
              "-of", "csv=p=0", f.name],
             capture_output=True, text=True, timeout=20,
         ).stdout
-    return [float(x) for x in out.split() if x.replace(".", "", 1).isdigit()]
+    vals = (x.strip(",") for x in out.split())  # csv: „12.345000,” pe fiecare rând
+    return [float(x) for x in vals if x.replace(".", "", 1).isdigit()]
 
 
 def _check_segment(sess: str, nr: int, url: str) -> None:

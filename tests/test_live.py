@@ -97,3 +97,11 @@ def test_segments_with_gaps_reach_stat(monkeypatch):
     live._schedule_audio_check(S, playlist)  # segmentele deja verificate nu se reiau
     live._audio_pool.submit(lambda: None).result()
     assert live.audio_gap_segments(S) == [3]
+
+
+def test_audio_pts_parses_ffprobe_csv(monkeypatch):
+    class P:
+        stdout = "10974.056000,\n10974.077333,\nN/A,\n"
+
+    monkeypatch.setattr(live.subprocess, "run", lambda *a, **k: P())
+    assert live._audio_pts(b"x") == [10974.056, 10974.077333]
