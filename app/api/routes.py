@@ -477,10 +477,15 @@ async def audio_stream(
     from app.sources import audio
 
     try:
-        body = await asyncio.to_thread(audio.stream, url, a, t)
+        body, media_start = await asyncio.to_thread(audio.stream, url, a, t)
     except SourceError as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
-    return StreamingResponse(body, media_type="video/mp4", headers={"Cache-Control": "no-store"})
+    # X-Media-Start: unde începe de fapt fluxul în film (cadrul-cheie dinaintea lui t)
+    return StreamingResponse(
+        body,
+        media_type="video/mp4",
+        headers={"Cache-Control": "no-store", "X-Media-Start": f"{media_start:.3f}"},
+    )
 
 
 @router.delete("/audio/stream")

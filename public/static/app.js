@@ -2835,6 +2835,9 @@ function mseAudioPlayer(video, { url, track, codecs, duration, startAt }) {
       return;
     }
     if (!res.ok || !res.body) return console.warn("audio: conversia nu a pornit", res.status);
+    // fluxul începe la cadrul-cheie dinaintea lui `from`, cu timpii de la zero: îl mutăm la locul lui
+    await idle();
+    sb.timestampOffset = parseFloat(res.headers.get("X-Media-Start")) || from;
     const reader = res.body.getReader();
     try {
       while (my === gen && !destroyed) {

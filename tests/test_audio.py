@@ -36,12 +36,26 @@ def test_avc_codec_strings():
     assert audio.avc_codec_string({"profile": "Constrained Baseline", "level": 30}) == "avc1.42401e"
 
 
-def test_ffmpeg_cmd_keeps_original_timestamps():
+def test_ffmpeg_cmd():
     cmd = audio.ffmpeg_cmd("http://torrserver:8090/stream/x?link=h&index=1&play", 2, 125.5)
     assert cmd[cmd.index("-ss") + 1] == "125.500"
     assert cmd.index("-ss") < cmd.index("-i")  # căutare rapidă, înainte de intrare
-    assert "-copyts" in cmd
     assert "0:a:2" in cmd and cmd[cmd.index("-c:v") + 1] == "copy"
+    assert cmd[cmd.index("-map_chapters") + 1] == "-1"  # fără pistă de date în MP4 (MSE o refuză)
+
+
+def test_keyframe_at_parses_ffprobe(monkeypatch):
+    class P:
+        stdout = "599.265000,\n"
+
+    monkeypatch.setattr(audio.subprocess, "run", lambda *a, **k: P())
+    assert audio.keyframe_at("http://torrserver:8090/stream/x", 600) == 599.265
+
+    class Bad:
+        stdout = ""
+
+    monkeypatch.setattr(audio.subprocess, "run", lambda *a, **k: Bad())
+    assert audio.keyframe_at("http://torrserver:8090/stream/x", 600) == 600
 
 
 def test_stream_rejects_foreign_urls():

@@ -91,13 +91,28 @@ def probe(url: str) -> dict:
         raise SourceError("Nu am putut citi pistele audio") from e
 
 
+def keyframe_at(src: str, start: float) -> float:
+    """Poziția reală (pts) a cadrului-cheie de la care pornește ffmpeg pentru `-ss start`.
+
+    Muxer-ul MP4 fragmentat al lui ffmpeg începe mereu timpii de la zero, așa că player-ul
+    are nevoie de poziția reală ca să pună datele la locul lor (timestampOffset)."""
+    try:
+        out = subprocess.run(
+            [_ffprobe(), "-v", "error", *_ffmpeg_auth_args(), "-read_intervals", f"{start:.3f}%+#1",
+             "-select_streams", "v:0", "-show_entries", "packet=pts_time", "-of", "csv=p=0", src],
+            capture_output=True, text=True, timeout=30, stdin=subprocess.DEVNULL,
+        ).stdout
+        return float(out.split()[0].strip(","))
+    except (OSError, subprocess.TimeoutExpired, ValueError, IndexError):
+        return start
+
+
 def ffmpeg_cmd(src: str, track: int, start: float) -> list[str]:
     return [
         Config.FFMPEG_PATH or "ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin",
         *_ffmpeg_auth_args(),
         "-ss", f"{start:.3f}", "-i", src,
-        "-copyts",  # timpii originali: player-ul pune datele exact la poziția din film
-        "-map", "0:v:0", "-map", f"0:a:{track}",
+        "-map", "0:v:0", "-map", f"0:a:{track}", "-map_chapters", "-1",
         "-c:v", "copy",
         "-c:a", "aac", "-ac", "2", "-b:a", "192k",
         "-f", "mp4", "-movflags", "frag_keyframe+empty_moov+default_base_moof",
@@ -113,10 +128,14 @@ def _stop_current() -> None:
 
 
 def stream(url: str, track: int, start: float):
-    """Generator cu MP4-ul fragmentat; oprește conversia anterioară (alt seek / altă pistă)."""
+    """(generator cu MP4-ul fragmentat, poziția reală de start în secunde).
+    Oprește conversia anterioară (alt seek / altă pistă)."""
     if not 0 <= track < 32 or not 0 <= start < 86400:
         raise SourceError("Parametri invalizi")
     src = _torrserver_url(url)
+    with _lock:
+        _stop_current()
+    media_start = keyframe_at(src, start)
     with _lock:
         _stop_current()
         try:
@@ -143,7 +162,7 @@ def stream(url: str, track: int, start: float):
                 if _current.get("proc") is proc:
                     _current["proc"] = None
 
-    return gen()
+    return gen(), media_start
 
 
 def stop() -> None:
