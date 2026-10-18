@@ -210,6 +210,10 @@ class LiveChannelBody(BaseModel):
     ref: str = Field(min_length=10, max_length=200)
 
 
+class LiveEventPlayBody(BaseModel):
+    url: str = Field(min_length=10, max_length=300)  # pagina meciului de pe pimpletv.ru
+
+
 def _live_err(e: Exception) -> HTTPException:
     if isinstance(e, SourceError):
         return HTTPException(status_code=400 if "invalid" in str(e).lower() else 502, detail=str(e))
@@ -285,6 +289,34 @@ async def live_channel_delete(h: str) -> list[dict[str, Any]]:
     from app.sources import live
 
     return await asyncio.to_thread(live.delete_channel, h.lower())
+
+
+@router.get("/live/events")
+async def live_events() -> list[dict[str, Any]]:
+    """Evenimente sportive de pe pimpletv.ru (fotbal, hochei…) pentru pagina „Live”."""
+    from app.sources import pimple
+
+    try:
+        return await asyncio.to_thread(pimple.events)
+    except Exception as e:  # noqa: BLE001 — site indisponibil / blocat
+        raise HTTPException(status_code=502, detail=f"pimpletv.ru indisponibil: {e}") from e
+
+
+@router.post("/live/events/play")
+async def live_event_play(body: LiveEventPlayBody) -> dict[str, Any]:
+    """Pagina unui meci -> ID-ul Ace Stream -> pornește redarea în motor."""
+    from app.sources import live, pimple
+
+    try:
+        h = await asyncio.to_thread(pimple.resolve, body.url)
+    except SourceError as e:
+        raise HTTPException(status_code=400 if "invalid" in str(e).lower() else 502, detail=str(e)) from e
+    except Exception as e:  # noqa: BLE001 — site indisponibil / blocat
+        raise HTTPException(status_code=502, detail=f"pimpletv.ru indisponibil: {e}") from e
+    try:
+        return await asyncio.to_thread(live.start, "id", h)
+    except Exception as e:  # noqa: BLE001
+        raise _live_err(e) from e
 
 
 @router.get("/sport")

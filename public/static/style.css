@@ -1248,8 +1248,15 @@ body.cinema-open { overflow: hidden; }
 .live-page .ts-form .live-name { flex: 0 0 180px; border-left: 1px solid rgba(255,255,255,0.1); padding-left: 0.8rem; font-size: 0.95rem; }
 .live-page .ts-form .btn.ghost { background: transparent; border: 1px solid rgba(255,255,255,0.18); }
 .live-page .live-sub { margin: 1.4rem 0 0.7rem !important; }
+.live-page .live-sub .live-sub-note { color: var(--sub); font-size: 0.72rem; font-weight: 400; }
+.live-page .live-sub .live-refresh { margin-left: auto; font-size: 0.75rem; padding: 0.2rem 0.6rem; }
+.live-day { color: var(--sub); font-size: 0.76rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin: 0.9rem 0 0.3rem; }
 .live-row { align-items: center; }
 .live-dot { width: 10px; height: 10px; border-radius: 50%; background: #ff4d4d; box-shadow: 0 0 0 4px rgba(255,77,77,0.18); flex-shrink: 0; margin-right: 0.9rem; }
+.live-dot.off { background: #4a4a4a; box-shadow: none; }
+.live-badge { color: #ff4d4d; font-size: 0.68rem; font-weight: 800; border: 1px solid rgba(255,77,77,0.5); border-radius: 4px; padding: 0 0.3rem; margin-left: 0.35rem; }
+.live-when { color: var(--sub); font-size: 0.8rem; margin-right: 0.4rem; min-width: 3.4rem; text-align: right; }
+.flag { width: 19px; height: 14px; object-fit: cover; border-radius: 2px; margin-right: 0.4rem; vertical-align: -2px; box-shadow: 0 0 0 1px rgba(255,255,255,0.15); }
 .cinema.cin-live .cin-tabs { display: none; }
 .cin-video.is-live .cin-progress, .cin-video.is-live #c-back, .cin-video.is-live #c-fwd,
 .cin-video.is-live #c-speed, .cin-video.is-live #c-prev, .cin-video.is-live #c-next { display: none !important; }

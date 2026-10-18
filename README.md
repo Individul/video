@@ -18,6 +18,8 @@ transmisii live prin Ace Stream. Rulează 24/7 pe un VPS, în Docker, în spatel
   (peers, viteză, cât e încărcat în avans); subtitrări din torrent (.srt) sau extrase din MKV.
 - **Sport**: ultimele apariții RGFootball (fără secțiunile VIP).
 - **Live**: transmisii Ace Stream după ID-urile `acestream://…` aduse de utilizator; canale salvate.
+  Pagina aduce automat **evenimentele sportive ale zilei de pe pimpletv.ru** (fotbal, hochei…, ore ora
+  Moscovei): un click pe „Pornește” rezolvă pagina meciului la ID-ul Ace Stream și pornește redarea.
 - **Calendar**: aparițiile viitoare (filme și episoade noi).
 - **Torrente**: căutare directă în toate sursele, pentru orice release.
 - **Watchlist**, **Continuă** (istoric), **Descărcări** (cache-ul TorrServer).
@@ -69,6 +71,7 @@ Testele rulează fără internet (parsare pe HTML fix, logică DB în memorie). 
 | Subtitrări | `GET /subtitles/embed`, `/subtitles/file`, `/subtitles/mux`, `/subtitles/mux/data`; `DELETE /subtitles/mux` |
 | Sport | `GET /sport` |
 | Live | `POST /live/start`, `GET /live/m/{ih}/{sess}.m3u8`, `/live/stat/{ih}/{sess}`, `POST /live/stop/{ih}/{sess}`, `GET/POST /live/channels`, `DELETE /live/channels/{h}` |
+| Live evenimente | `GET /live/events` (pimpletv.ru: meciurile zilei, ore ora Moscovei), `POST /live/events/play {url}` (rezolvă pagina meciului la ID-ul Ace Stream și pornește) |
 | Utilizator | `GET/POST /watchlist`, `DELETE /watchlist/{id}`, `GET/POST /history`, `GET /title/{id}/history` |
 | Stare | `GET /health` (200 doar cu sesiune validă — folosit de Caddy pentru stream-uri) |
 
@@ -91,7 +94,7 @@ app/
   main.py, config.py, db.py, models.py
   api/routes.py
   services/  catalog.py, search.py
-  sources/   tmdb.py, kinopoisk.py, torrents.py, subtitles.py, sport.py, live.py, calendar.py
+  sources/   tmdb.py, kinopoisk.py, torrents.py, subtitles.py, sport.py, live.py, pimple.py, calendar.py
   static/    index.html, app.js, style.css
 deploy/      setup-vps.sh, secure-vps.sh, backup.sh, torrserver-watchdog.sh, acestream/Dockerfile
 tests/

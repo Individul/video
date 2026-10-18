@@ -66,6 +66,20 @@ function esc(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ESC_MAP[c]);
 }
 const escUrl = esc;
+/* steagul campionatului (flagcdn.com; emoji-urile de steag nu se randează pe Windows) */
+function flagImg(code) {
+  return code ? `<img class="flag" src="https://flagcdn.com/w40/${esc(code)}.png" alt="" loading="lazy">` : "";
+}
+/* țara (RGFootball, în engleză) -> cod flagcdn; competițiile UEFA -> steagul UE */
+const SP_FLAG_CODES = {
+  england: "gb-eng", germany: "de", italy: "it", spain: "es", france: "fr",
+  portugal: "pt", netherlands: "nl", scotland: "gb-sct", turkey: "tr", turkiye: "tr",
+  russia: "ru", ukraine: "ua", belgium: "be", brazil: "br", argentina: "ar", usa: "us",
+};
+function spFlag(m) {
+  return SP_FLAG_CODES[(m.country || "").toLowerCase()] ||
+    (/uefa|champions league|europa league/i.test(m.competition || "") ? "eu" : "");
+}
 /* URL în style="background-image:url('…')": entitățile HTML se decodează înainte de CSS,
    deci ghilimelele/parantezele se codifică URL (%27 etc.), nu ca entități */
 function cssUrl(s) {
@@ -739,10 +753,58 @@ async function loadLive() {
         <button class="btn" type="submit">Pornește</button>
         <button class="btn ghost" type="button" id="live-save">Salvează</button>
       </form>
+      <div class="sub-title live-sub">Evenimente azi <span class="live-sub-note">ora Moscovei</span><button class="btn ghost live-refresh" type="button" id="live-ev-refresh">Reîmprospătează</button></div>
+      <div id="live-events" class="sp-list"><div class="status">Se încarcă…</div></div>
       <div class="sub-title live-sub">Canalele mele</div>
       <div id="live-list" class="sp-list"><div class="status">Se încarcă…</div></div>
     </div>`;
   const refEl = $("#live-ref"), nameEl = $("#live-name");
+  const drawEvents = (evs) => {
+    const box = $("#live-events");
+    if (!box) return;
+    if (!evs.length) {
+      box.innerHTML = `<div class="status">Niciun eveniment momentan.</div>`;
+      return;
+    }
+    box.innerHTML = "";
+    let lastDay = "";
+    evs.forEach((ev) => {
+      if (ev.day !== lastDay) {
+        lastDay = ev.day;
+        const head = document.createElement("div");
+        head.className = "live-day";
+        head.textContent = ev.day;
+        box.appendChild(head);
+      }
+      const row = document.createElement("div");
+      row.className = "sp-row live-row";
+      row.innerHTML = `
+        <div class="live-dot${ev.is_live ? "" : " off"}"></div>
+        <div class="sp-main">
+          <div class="sp-match">${esc(ev.home)} – ${esc(ev.away)}${ev.is_live ? ' <span class="live-badge">LIVE</span>' : ""}</div>
+          <div class="sp-meta">${flagImg(ev.flag)}${[ev.league, ev.channel].filter(Boolean).map(esc).join(" · ")}</div>
+        </div>
+        <div class="sp-vars">
+          <span class="live-when">${esc(ev.when || "")}</span>
+          <button class="sp-var" data-a="play">${svg(I.play, 13)} <b>Pornește</b></button>
+        </div>`;
+      row.querySelector('[data-a="play"]').addEventListener("click", () =>
+        playLive({ name: `${ev.home} – ${ev.away}`, url: ev.url })
+      );
+      box.appendChild(row);
+    });
+  };
+  const loadEvents = async (silent = false) => {
+    const box = $("#live-events");
+    if (!box) return;
+    try {
+      const evs = await api("/api/live/events");
+      if (seq === viewSeq) drawEvents(evs);
+    } catch (err) {
+      // la reîmprospătarea automată păstrăm lista veche (o eroare de moment nu o șterge)
+      if (!silent && seq === viewSeq) box.innerHTML = `<div class="status error">${esc(err.message)}</div>`;
+    }
+  };
   const drawList = (items) => {
     const box = $("#live-list");
     if (!box) return;
@@ -790,6 +852,18 @@ async function loadLive() {
       toast(err.message, false);
     }
   });
+  $("#live-ev-refresh").addEventListener("click", () => {
+    const box = $("#live-events");
+    if (box) box.innerHTML = `<div class="status">Se încarcă…</div>`;
+    loadEvents();
+  });
+  loadEvents(); // în paralel cu canalele salvate de mai jos
+  // auto-reîmprospătat cât timp pagina e deschisă (65 s > cache-ul serverului de 60 s);
+  // timerul se oprește singur când navigăm în altă parte (sec != viewSeq)
+  const evTimer = setInterval(() => {
+    if (seq !== viewSeq) return clearInterval(evTimer);
+    loadEvents(true);
+  }, 65000);
   try {
     const items = await api("/api/live/channels");
     if (seq === viewSeq) drawList(items);
@@ -817,7 +891,7 @@ function loadHls() {
   return hlsLoading;
 }
 
-async function playLive({ name, ref }) {
+async function playLive({ name, ref, url }) {
   enterCinema({ id: null, name, type: "movie" });
   cinema.classList.add("cin-live"); // fără versiuni/stare torrent: doar player-ul
   $("#cin-sub").textContent = "Live · Ace Stream";
@@ -827,7 +901,10 @@ async function playLive({ name, ref }) {
   playerBox.innerHTML = `<div class="cin-status">Conectare la rețeaua Ace Stream…<small>prima pornire poate dura 10–30 s</small></div>`;
   let sess;
   try {
-    sess = await api("/api/live/start", { method: "POST", body: JSON.stringify({ ref }) });
+    // url = eveniment pimpletv (serverul rezolvă pagina la ID); ref = ID direct
+    sess = await (url
+      ? api("/api/live/events/play", { method: "POST", body: JSON.stringify({ url }) })
+      : api("/api/live/start", { method: "POST", body: JSON.stringify({ ref }) }));
   } catch (err) {
     if (ps === playSeq) playerBox.innerHTML = `<div class="cin-status error">${esc(err.message)}</div>`;
     return;
@@ -1039,7 +1116,7 @@ async function loadSport() {
         const row = document.createElement("div");
         row.className = "sp-row";
         row.innerHTML = `
-          <div class="sp-comp">${esc(m.competition)}</div>
+          <div class="sp-comp">${flagImg(spFlag(m))}${esc(m.competition)}</div>
           <div class="sp-main">
             <div class="sp-match">${esc(m.match)}</div>
             <div class="sp-meta">${[m.country, m.round].filter(Boolean).map(esc).join(" · ")}</div>
