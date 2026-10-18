@@ -2886,6 +2886,21 @@ function mseAudioPlayer(video, { url, track, codecs, duration, startAt }) {
   };
 }
 
+/* poate browserul acesta reda direct codec-ul audio? (Edge pe Windows știe AC3/E-AC3, Chrome nu) */
+const AUDIO_MIME = { ac3: "ac-3", eac3: "ec-3", aac: "mp4a.40.2", mp3: "mp4a.69", opus: "opus", flac: "flac" };
+function browserPlaysAudio(codec) {
+  const c = AUDIO_MIME[codec];
+  if (!c) return false; // DTS, TrueHD, PCM...: niciun browser
+  try {
+    return (
+      (window.MediaSource && MediaSource.isTypeSupported(`audio/mp4; codecs="${c}"`)) ||
+      !!document.createElement("video").canPlayType(`audio/mp4; codecs="${c}"`)
+    );
+  } catch (_) {
+    return false;
+  }
+}
+
 function attachAudioTracks(video, t, data, ctx) {
   if (!data.stream_url || !window.MediaSource) return;
   const ccBtn = $("#c-cc");
@@ -2969,9 +2984,11 @@ function attachAudioTracks(video, t, data, ctx) {
     if (mse) mse.destroy();
   });
 
-  api(`/api/audio/tracks?url=${encodeURIComponent(data.stream_url)}`)
+  // pistele le citim abia după ce filmul a pornit: ffprobe pe torrent nu concurează cu începutul
+  const loadTracks = () => api(`/api/audio/tracks?url=${encodeURIComponent(data.stream_url)}`)
     .then((r) => {
       if (!ctx.alive || !r.tracks || !r.tracks.length) return;
+      r.tracks.forEach((tr) => (tr.native = tr.native || browserPlaysAudio(tr.codec)));
       info = r;
       if (!info.mse_codecs) return; // HEVC & co.: browserul redă oricum doar prima pistă
       const first = info.tracks[0];
@@ -2982,9 +2999,19 @@ function attachAudioTracks(video, t, data, ctx) {
       const pref = recalled();
       const match = pref && info.tracks.find((x) => x.lang === pref.lang && x.title === pref.title);
       if (match && match.index !== 0) select(match.index, { save: false });
-      else if (!first.native) select(0, { save: false }); // AC3/DTS: altfel n-ar avea sunet
+      else if (!first.native) select(0, { save: false }); // DTS & co.: altfel n-ar avea sunet
     })
     .catch(() => {});
+  let loaded = false;
+  const once = () => {
+    if (loaded || !ctx.alive) return;
+    loaded = true;
+    loadTracks();
+  };
+  video.addEventListener("playing", once, { once: true });
+  // fișier pe care browserul nu-l poate reda deloc (ex. doar DTS): citim pistele oricum
+  video.addEventListener("error", once, { once: true });
+  setTimeout(once, 20000);
 }
 
 /* ---------- subtitrări automate ---------- */
