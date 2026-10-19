@@ -23,6 +23,10 @@ tools/
 data/
 torrserver/
 jackett/
+media/
+qbittorrent/
+navidrome/
+audiobookshelf/
 
 # date de mutat pe VPS (copii locale, nu intră în git)
 transfer/
