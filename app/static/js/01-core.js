@@ -225,7 +225,12 @@ function historyLabel(h) {
 // început (>30s) dar neterminat (>1 min rămas); un film văzut până la capăt dispare din „Continuă”
 const isUnfinished = (h) =>
   h.position_seconds > 30 && (h.duration_seconds == null || h.duration_seconds - h.position_seconds > 60);
-const isContinuable = (h) => !!h.title && !!h.duration_seconds && isUnfinished(h);
+// la seriale, episodul abia pornit e „unde ești” (ai trecut la următorul): apare de la primele
+// secunde salvate; la filme rămâne pragul de 30 s (filme deschise din greșeală)
+const isContinuable = (h) =>
+  !!h.title &&
+  !!h.duration_seconds &&
+  (isUnfinished(h) || (h.episode != null && h.position_seconds >= 5 && h.duration_seconds - h.position_seconds > 60));
 
 function rowEl(titleText, titles, opts = {}) {
   const row = document.createElement("div");
