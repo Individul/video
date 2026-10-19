@@ -526,13 +526,16 @@ function bkSyncSpeed() {
   BP.el.querySelector(".bp-speed").textContent = `${BP.audio.playbackRate}×`;
 }
 
-function bkSave(force) {
+// `at`: poziția la schimbarea pistei (audio.currentTime e încă cea a pistei vechi până se încarcă noua)
+function bkSave(force, at) {
   if (!BP.book || !BP.tracks.length) return;
   BP.lastSave = Date.now();
   const t = BP.tracks[BP.i];
+  const fresh = at == null && BP.pendingSeek == null && BP.audio.readyState > 0;
   const body = JSON.stringify({
     track: t.index, track_no: BP.i, tracks_total: BP.tracks.length,
-    position: BP.audio.currentTime || 0, duration: Number.isFinite(BP.audio.duration) ? BP.audio.duration : null,
+    position: at != null ? at : fresh ? BP.audio.currentTime || 0 : BP.pendingSeek || 0,
+    duration: fresh && Number.isFinite(BP.audio.duration) ? BP.audio.duration : null,
   });
   fetch(`/api/books/${encodeURIComponent(BP.book.hash)}/progress`, {
     method: "PUT", headers: { "Content-Type": "application/json" }, body, keepalive: !!force,
@@ -554,7 +557,7 @@ function bkLoad(i, pos, autoplay) {
       artwork: BP.book.cover ? [{ src: BP.book.cover, sizes: "415x415", type: "image/jpeg" }] : [],
     });
   }
-  bkSave();
+  bkSave(false, pos > 0 ? pos : 0);
 }
 
 function bkToggleTracks() {
