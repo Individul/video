@@ -63,6 +63,28 @@ document.querySelectorAll(".nav-item").forEach((btn) => {
   });
 });
 
+/* meniul lateral se poate strânge la iconițe (desktop); alegerea rămâne ținută minte */
+const NAV_KEY = "cinema-nav-collapsed";
+function setNavCollapsed(on) {
+  document.body.classList.toggle("nav-collapsed", on);
+  const b = $("#nav-collapse");
+  if (b) {
+    const label = on ? "Extinde meniul" : "Strânge meniul";
+    b.title = label;
+    b.setAttribute("aria-label", label);
+    b.querySelector(".nav-tip").textContent = on ? "Extinde" : "Strânge";
+  }
+  try {
+    localStorage.setItem(NAV_KEY, on ? "1" : "0");
+  } catch (_) {}
+}
+// numele butoanelor apar la hover când meniul e strâns
+document.querySelectorAll(".nav-item").forEach((b) => (b.title = b.querySelector(".nav-tip")?.textContent || ""));
+$("#nav-collapse")?.addEventListener("click", () => setNavCollapsed(!document.body.classList.contains("nav-collapsed")));
+try {
+  if (localStorage.getItem(NAV_KEY) === "1") setNavCollapsed(true);
+} catch (_) {}
+
 function setNavActive(view) {
   document.querySelectorAll(".nav-item").forEach((b) =>
     b.classList.toggle("active", b.dataset.view === view)

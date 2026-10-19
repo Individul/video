@@ -1293,3 +1293,39 @@ body.cinema-open { overflow: hidden; }
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
 }
 .cin-unmute svg { fill: currentColor; }
+
+/* =================== meniul lateral (desktop): text lângă iconiță, pe grupuri =================== */
+.nav-group, .nav-collapse { display: none; }
+@media (min-width: 761px) {
+  :root { --nav-w: 212px; }
+  body.nav-collapsed { --nav-w: 76px; }
+  #nav { align-items: stretch; padding: 14px 10px 10px; gap: 0; transition: width 0.18s ease; overflow-x: hidden; }
+  .nav-logo { align-self: flex-start; margin: 0 0 14px 6px; }
+  .nav-items { gap: 2px; width: 100%; }
+  .nav-item {
+    width: 100%; height: 40px; flex-direction: row; justify-content: flex-start; gap: 14px;
+    padding: 0 12px; border-radius: 10px;
+  }
+  .nav-item svg { width: 22px; height: 22px; }
+  .nav-tip { font-size: 0.93rem; font-weight: 600; white-space: nowrap; }
+  .nav-item.active { background: rgba(255, 226, 22, 0.1); }
+  .nav-item.active::before { left: -10px; top: 9px; bottom: 9px; }
+  .nav-group {
+    display: block; padding: 16px 12px 6px; white-space: nowrap;
+    font-size: 0.72rem; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; color: #6f7378;
+  }
+  .nav-collapse {
+    display: flex; align-items: center; gap: 14px; margin-top: auto; padding: 0 12px; height: 38px; flex-shrink: 0;
+    border: none; background: none; color: var(--sub); border-radius: 10px; cursor: pointer;
+  }
+  .nav-collapse:hover { background: var(--card); color: var(--text); }
+  .nav-collapse svg { width: 22px; height: 22px; fill: currentColor; flex-shrink: 0; transition: transform 0.18s; }
+
+  /* strâns: doar iconițe (numele apar la hover, din title), grupurile devin linii subțiri */
+  body.nav-collapsed .nav-logo { align-self: center; margin-left: 0; padding: 0 6px; font-size: 0; min-width: 44px; }
+  body.nav-collapsed .nav-logo::after { content: "C"; font-size: 1.1rem; }
+  body.nav-collapsed .nav-tip { display: none; }
+  body.nav-collapsed .nav-item, body.nav-collapsed .nav-collapse { justify-content: center; padding: 0; }
+  body.nav-collapsed .nav-group { font-size: 0; padding: 0; height: 1px; margin: 10px 14px; background: rgba(255, 255, 255, 0.08); }
+  body.nav-collapsed .nav-collapse svg { transform: rotate(180deg); }
+}

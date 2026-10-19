@@ -6,7 +6,7 @@
 <title>Cinema</title>
 <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 <link rel="apple-touch-icon" href="/static/favicon.svg">
-<link rel="stylesheet" href="/static/style.css?v=46">
+<link rel="stylesheet" href="/static/style.css?v=47">
 </head>
 <body>
 
@@ -22,7 +22,7 @@
       <svg viewBox="0 0 24 24"><path d="M15.5 14h-.8l-.3-.3a6.5 6.5 0 1 0-.7.7l.3.3v.8l5 5 1.5-1.5-5-5zm-6 0a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>
       <span class="nav-tip">Căutare</span>
     </button>
-    <div class="nav-sep"></div>
+    <div class="nav-group nav-cat">Catalog</div>
     <button class="nav-item nav-cat" data-view="films" aria-label="Filme">
       <svg viewBox="0 0 24 24"><path d="M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V4z"/></svg>
       <span class="nav-tip">Filme</span>
@@ -39,6 +39,7 @@
       <svg viewBox="0 0 24 24"><path d="M12 2l1.9 5.6L19.8 6l-3.6 4.6L21 14l-6 .4-1.4 5.8L12 15l-1.6 5.2L9 14.4 3 14l4.8-3.4L4.2 6l5.9 1.6z"/></svg>
       <span class="nav-tip">Anime</span>
     </button>
+    <div class="nav-group nav-cat">Sport</div>
     <button class="nav-item nav-cat" data-view="sport" aria-label="Sport">
       <svg viewBox="0 0 24 24"><path fill-rule="evenodd" d="M19 5h-2V3H7v2H5a2 2 0 0 0-2 2v1a5 5 0 0 0 4.4 5A5 5 0 0 0 11 15.9V19H7v2h10v-2h-4v-3.1a5 5 0 0 0 3.6-2.9A5 5 0 0 0 21 8V7a2 2 0 0 0-2-2zM5 8V7h2v3.8A3 3 0 0 1 5 8zm14 0a3 3 0 0 1-2 2.8V7h2z"/></svg>
       <span class="nav-tip">Sport</span>
@@ -47,15 +48,7 @@
       <svg viewBox="0 0 24 24"><path d="M12 9.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM7.05 7.05l1.41 1.41a5 5 0 0 0 0 7.08l-1.41 1.41a7 7 0 0 1 0-9.9zm9.9 0a7 7 0 0 1 0 9.9l-1.41-1.41a5 5 0 0 0 0-7.08zM4.22 4.22l1.42 1.42a9 9 0 0 0 0 12.72l-1.42 1.42a11 11 0 0 1 0-15.56zm15.56 0a11 11 0 0 1 0 15.56l-1.42-1.42a9 9 0 0 0 0-12.72z"/></svg>
       <span class="nav-tip">Live</span>
     </button>
-    <div class="nav-sep"></div>
-    <button class="nav-item nav-cat" data-view="calendar" aria-label="Calendar apariții">
-      <svg viewBox="0 0 24 24"><path fill-rule="evenodd" d="M19 4h-1V2h-2v2H8V2H6v2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 16H5V9h14zM7 11h5v5H7z"/></svg>
-      <span class="nav-tip">Calendar</span>
-    </button>
-    <button class="nav-item nav-cat" data-view="torrents" aria-label="Căutare torrente">
-      <svg viewBox="0 0 24 24"><path d="M3 7v6a9 9 0 0 0 18 0V7h-4v6a5 5 0 0 1-10 0V7zm0-4h4v3H3zm14 0h4v3h-4z"/></svg>
-      <span class="nav-tip">Torrente</span>
-    </button>
+    <div class="nav-group">Al meu</div>
     <button class="nav-item" data-view="watchlist" aria-label="Watchlist">
       <svg viewBox="0 0 24 24"><path d="M12 17.3l-6.2 3.7 1.6-7L2 9.2l7.1-.6L12 2l2.9 6.6 7.1.6-5.4 4.8 1.6 7z"/></svg>
       <span class="nav-tip">Watchlist</span>
@@ -64,11 +57,24 @@
       <svg viewBox="0 0 24 24"><path d="M13 3a9 9 0 0 0-9 9H1l3.9 3.9L8.8 12h-3a7 7 0 1 1 2 5l1.4 1.4A9 9 0 1 0 13 3zm-1 5v5l4.3 2.5.7-1.2-3.5-2V8z"/></svg>
       <span class="nav-tip">Continuă</span>
     </button>
+    <div class="nav-group nav-cat">Unelte</div>
+    <button class="nav-item nav-cat" data-view="calendar" aria-label="Calendar apariții">
+      <svg viewBox="0 0 24 24"><path fill-rule="evenodd" d="M19 4h-1V2h-2v2H8V2H6v2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 16H5V9h14zM7 11h5v5H7z"/></svg>
+      <span class="nav-tip">Calendar</span>
+    </button>
+    <button class="nav-item nav-cat" data-view="torrents" aria-label="Căutare torrente">
+      <svg viewBox="0 0 24 24"><path d="M3 7v6a9 9 0 0 0 18 0V7h-4v6a5 5 0 0 1-10 0V7zm0-4h4v3H3zm14 0h4v3h-4z"/></svg>
+      <span class="nav-tip">Torrente</span>
+    </button>
     <button class="nav-item" data-view="downloads" aria-label="Descărcări">
       <svg viewBox="0 0 24 24"><path d="M5 20h14v-2H5zM19 9h-4V3H9v6H5l7 7z"/></svg>
       <span class="nav-tip">Descărcări</span>
     </button>
   </div>
+  <button class="nav-collapse" id="nav-collapse" type="button" aria-label="Strânge meniul" title="Strânge meniul">
+    <svg viewBox="0 0 24 24"><path d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12z"/></svg>
+    <span class="nav-tip">Strânge</span>
+  </button>
 </nav>
 
 <main id="content"></main>
@@ -132,7 +138,7 @@
 
 <!-- scripturi clasice, în ordine: împart același spațiu global (vezi js/01-core.js) -->
 <script src="/static/js/01-core.js?v=48"></script>
-<script src="/static/js/02-router.js?v=48"></script>
+<script src="/static/js/02-router.js?v=49"></script>
 <script src="/static/js/03-pages.js?v=48"></script>
 <script src="/static/js/04-live.js?v=52"></script>
 <script src="/static/js/05-pages-more.js?v=51"></script>
