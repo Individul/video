@@ -51,7 +51,6 @@ browser ──HTTPS──▶ Caddy ──▶ vid (FastAPI + SQLite, parolă)
 | `flaresolverr` | trece de Cloudflare pentru Jackett | 768 MB |
 | `acestream` | motorul Ace Stream 3.2.11 (pachetul oficial), cache disc ≤ 300 MB | 1 GB |
 | `qbittorrent` | descarcă cărțile audio pe disc (API doar în rețeaua Docker) | 384 MB |
-| `audiobookshelf` | opțional: altă interfață pentru aceleași cărți, la `/audiobookshelf` | 384 MB |
 
 Spre internet sunt deschise doar 80/443 (Caddy), 6881 (TorrServer), 6882 (qBittorrent) și 8621 (Ace Stream).
 
