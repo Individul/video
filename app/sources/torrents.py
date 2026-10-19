@@ -114,6 +114,7 @@ def score_torrent(item: dict, query_year: int | None = None) -> tuple[float, str
 # sau, mai general, ușoare: ≤ 2,6 GB în H.264 — pornesc repede și nu mănâncă datele mobile.
 _MOBILE_TAG_RE = re.compile(r"ipad|iphone|android|\bmobile|мобил|смартфон|планшет|\bкпк\b|\b3gp\b|\bpsp\b", re.I)
 MOBILE_MAX_GB = 2.6
+MOBILE_EXTRA = 5  # câte release-uri ușoare se adaugă peste primele N din lista de versiuni
 
 
 def is_mobile(item: dict) -> bool:
@@ -669,7 +670,11 @@ async def search_torrents(query: str, limit: int | None = None) -> list[dict]:
             "dub": "RU" if has_ru_audio(r.get("name")) else "",
         })
     annotated.sort(key=lambda r: r["score"], reverse=True)
-    annotated = annotated[:limit]
+    # primele `limit` după scorul de desktop sunt de obicei toate grele (1080p/4K); adăugăm și
+    # cele mai bune release-uri ușoare, ca filtrul „Mobil” și alegerea pe telefon să aibă din ce
+    top = annotated[:limit]
+    light = sorted((r for r in annotated[limit:] if r["mobile"]), key=lambda r: r["mobile_score"], reverse=True)
+    annotated = sorted(top + light[:MOBILE_EXTRA], key=lambda r: r["score"], reverse=True)
     _SEARCH_CACHE[cache_key] = (time.monotonic(), annotated)
     return annotated
 
