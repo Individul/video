@@ -445,8 +445,9 @@ function bkBar() {
   document.body.appendChild(el);
   const audio = new Audio();
   audio.preload = "auto";
+  // defaultPlaybackRate: viteza rămâne și la pista următoare (src nou o resetează la „default”)
   try {
-    audio.playbackRate = +localStorage.getItem("bk-speed") || 1;
+    audio.defaultPlaybackRate = audio.playbackRate = +localStorage.getItem("bk-speed") || 1;
   } catch (_) {}
   BP.el = el;
   BP.audio = audio;
@@ -497,7 +498,7 @@ function bkBar() {
     if (a === "fwd") audio.currentTime = Math.min(audio.duration || 0, audio.currentTime + 30);
     if (a === "speed") {
       const i = BK_SPEEDS.indexOf(audio.playbackRate);
-      audio.playbackRate = BK_SPEEDS[(i + 1) % BK_SPEEDS.length];
+      audio.defaultPlaybackRate = audio.playbackRate = BK_SPEEDS[(i + 1) % BK_SPEEDS.length];
       try {
         localStorage.setItem("bk-speed", audio.playbackRate);
       } catch (_) {}
