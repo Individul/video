@@ -95,9 +95,12 @@ body {
   margin: 0;
   background: var(--bg-content);
   color: var(--text);
-  font-family: "Segoe UI", -apple-system, Roboto, Arial, sans-serif;
+  /* Golos Text (ParaType): desenat pentru ecran, cu chirilică foarte bună și diacritice românești */
+  font-family: "Golos Text", "Segoe UI", -apple-system, Roboto, Arial, sans-serif;
   font-size: 16px;
 }
+/* butoanele și câmpurile nu moștenesc fontul implicit — le aliniem cu restul paginii */
+button, input, select, textarea { font-family: inherit; }
 
 /* ---------- NAV (sidebar desktop / bottom-bar mobil) ---------- */
 #nav {
@@ -1312,10 +1315,10 @@ body.cinema-open { overflow: hidden; }
   :root { --nav-w: 212px; }
   body.nav-collapsed { --nav-w: 76px; }
   #nav { align-items: stretch; padding: 14px 10px 10px; gap: 0; transition: width 0.18s ease; overflow-x: hidden; }
-  .nav-logo { align-self: flex-start; margin: 0 0 14px 6px; }
+  .nav-logo { align-self: flex-start; margin: 0 0 10px 6px; flex-shrink: 0; } /* nu se strivește pe ecrane joase */
   .nav-items { gap: 2px; width: 100%; }
   .nav-item {
-    width: 100%; height: 40px; flex-direction: row; justify-content: flex-start; gap: 14px;
+    width: 100%; height: 38px; flex-direction: row; justify-content: flex-start; gap: 14px;
     padding: 0 12px; border-radius: 10px;
   }
   .nav-item svg { width: 22px; height: 22px; }
@@ -1323,7 +1326,7 @@ body.cinema-open { overflow: hidden; }
   .nav-item.active { background: rgba(255, 226, 22, 0.1); }
   .nav-item.active::before { left: -10px; top: 9px; bottom: 9px; }
   .nav-group {
-    display: block; padding: 16px 12px 6px; white-space: nowrap;
+    display: block; padding: 12px 12px 4px; white-space: nowrap; flex-shrink: 0;
     font-size: 0.72rem; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; color: var(--group);
   }
   .nav-collapse {
