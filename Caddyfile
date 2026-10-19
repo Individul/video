@@ -30,16 +30,6 @@
 		}
 	}
 
-	# bibliotecă: Navidrome (muzică) primește utilizatorul de la portal, fără parolă proprie
-	handle /music* {
-		forward_auth vid:8000 {
-			uri /api/health
-		}
-		reverse_proxy navidrome:4533 {
-			header_up Remote-User cinema
-			flush_interval -1
-		}
-	}
 	# Audiobookshelf (cărți audio): după login-ul portalului; are și contul lui
 	handle /audiobookshelf* {
 		forward_auth vid:8000 {

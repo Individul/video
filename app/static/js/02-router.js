@@ -24,12 +24,28 @@ function parseRoute() {
   if (seg[0] === "sport") return { view: "sport" };
   if (seg[0] === "live") return { view: "live" };
   if (seg[0] === "library") return { view: "library" };
-  if (seg[0] === "music" || seg[0] === "audiobooks") {
-    let q = seg.slice(1).join("/");
-    try {
-      q = decodeURIComponent(q);
-    } catch (_) {}
-    return { view: seg[0], q };
+  if (seg[0] === "audiobooks") {
+    const dec = (x) => {
+      try {
+        return decodeURIComponent(x);
+      } catch (_) {
+        return x;
+      }
+    };
+    if (seg[1] === "genre") return { view: "audiobooks", genre: seg[2] || "" };
+    if (seg[1] === "search") return { view: "audiobooks", q: dec(seg.slice(2).join("/")) };
+    return { view: "audiobooks" };
+  }
+  if (seg[0] === "book" && seg.length >= 3) {
+    const dec = (x) => {
+      try {
+        return decodeURIComponent(x);
+      } catch (_) {
+        return x;
+      }
+    };
+    const author = dec(seg[1]);
+    return { view: "book", author: author === "-" ? null : author, title: dec(seg.slice(2).join("/")) };
   }
   if (seg[0] === "torrents") {
     let q = seg.slice(1).join("/");
@@ -181,7 +197,8 @@ async function render() {
   pageHash = hash;
 
   viewSeq++;
-  const navView = r.view === "browse" ? r.category : r.view === "searchpage" || r.view === "person" ? null : r.view;
+  const navView = r.view === "browse" ? r.category : r.view === "searchpage" || r.view === "person" ? null
+    : r.view === "book" ? "audiobooks" : r.view;
   setNavActive(navView);
   window.scrollTo(0, 0);
 
@@ -195,7 +212,8 @@ async function render() {
   if (r.view === "calendar") return loadCalendar();
   if (r.view === "sport") return loadSport();
   if (r.view === "live") return loadLive();
-  if (r.view === "music" || r.view === "audiobooks") return loadLibraryCatalog(r.view, r.q);
+  if (r.view === "audiobooks") return loadAudiobooks(r);
+  if (r.view === "book") return loadBook(r);
   if (r.view === "library") return loadLibrary();
   if (r.view === "torrents") return loadTorrentSearch(r.q);
   return loadHome();

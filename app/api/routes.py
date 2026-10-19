@@ -27,6 +27,7 @@ from app.auth import (
 from app.config import Config
 from app.db import get_session
 from app.models import (
+    AudioBook,
     HistoryItem,
     Title,
     TitleType,
@@ -400,65 +401,195 @@ async def sport_feed(q: str | None = Query(None, max_length=100)) -> dict[str, A
         raise HTTPException(status_code=502, detail=f"RGFootball indisponibil: {e}") from e
 
 
-# ----------------- Bibliotecă: muzică și cărți audio -----------------
+# ----------------- Cărți audio -----------------
 
-def _library_err(e: Exception) -> HTTPException:
+def _books_err(e: Exception) -> HTTPException:
     if isinstance(e, SourceError):
         msg = str(e)
-        bad = any(w in msg for w in ("necunoscută", "invalid", "nepermis"))
-        return HTTPException(status_code=400 if bad else 502, detail=msg)
-    return HTTPException(status_code=502, detail=f"Bibliotecă indisponibilă: {e}")
+        bad = any(w in msg for w in ("necunoscut", "invalid", "nepermis", "inexistent"))
+        return HTTPException(status_code=400 if bad else 404 if "încă" in msg else 502, detail=msg)
+    return HTTPException(status_code=502, detail=f"Cărți audio indisponibile: {e}")
 
 
-class LibrarySource(BaseModel):
+def _book_row(b: AudioBook, dl: dict | None) -> dict[str, Any]:
+    return {
+        "hash": b.hash, "author": b.author, "title": b.title, "narrator": b.narrator, "cover": b.cover,
+        "track": b.track, "track_no": b.track_no, "tracks_total": b.tracks_total,
+        "position": b.position, "duration": b.duration,
+        "listened_at": b.listened_at.isoformat() if b.listened_at else None,
+        "added_at": b.added_at.isoformat() if b.added_at else None,
+        "download": dl,
+    }
+
+
+class BookSource(BaseModel):
     magnet: str | None = Field(None, max_length=4000)
     torrent_url: str | None = Field(None, max_length=4000)
 
 
-class LibraryAddBody(BaseModel):
-    kind: str = Field(max_length=20)
-    source: LibrarySource
+class BookInfo(BaseModel):
+    author: str | None = Field(None, max_length=256)
+    title: str = Field(min_length=1, max_length=512)
+    narrator: str | None = Field(None, max_length=256)
+    cover: str | None = Field(None, max_length=512)
 
 
-@router.get("/library/browse/{kind}")
-async def library_browse(kind: str, q: str | None = Query(None, max_length=100)) -> dict[str, Any]:
-    """Catalog: noutăți din categoria Torznab (fără `q`) sau căutare în ea."""
-    from app.sources import library
-
-    try:
-        return {"results": await asyncio.to_thread(library.browse, kind, q)}
-    except Exception as e:  # noqa: BLE001
-        raise _library_err(e) from e
+class BookAddBody(BaseModel):
+    source: BookSource
+    book: BookInfo
 
 
-@router.post("/library/add")
-async def library_add(body: LibraryAddBody) -> dict[str, Any]:
-    from app.sources import library
-
-    try:
-        return await asyncio.to_thread(library.add, body.kind, body.source.model_dump())
-    except Exception as e:  # noqa: BLE001
-        raise _library_err(e) from e
+class BookProgressBody(BaseModel):
+    track: int = Field(ge=0, le=100000)
+    track_no: int = Field(ge=0, le=100000)
+    tracks_total: int | None = Field(None, ge=0, le=100000)
+    position: float = Field(ge=0, le=10 ** 7)
+    duration: float | None = Field(None, ge=0, le=10 ** 7)
 
 
-@router.get("/library")
-async def library_items() -> dict[str, Any]:
-    from app.sources import library
+@router.get("/books/genres")
+async def books_genres() -> list[dict[str, str]]:
+    from app.sources import books
 
-    try:
-        return await asyncio.to_thread(library.items)
-    except Exception as e:  # noqa: BLE001
-        raise _library_err(e) from e
+    return books.genres()
 
 
-@router.delete("/library/{torrent_hash}")
-async def library_remove(torrent_hash: str) -> dict[str, str]:
-    from app.sources import library
+@router.get("/books/browse")
+async def books_browse(
+    genre: str | None = Query(None, max_length=30), q: str | None = Query(None, max_length=100)
+) -> dict[str, Any]:
+    """Cărți (grupate, cu versiuni): noutăți, un gen sau căutare."""
+    from app.sources import books
 
     try:
-        await asyncio.to_thread(library.remove, torrent_hash.lower())
+        return {"books": await asyncio.to_thread(books.browse, genre, q)}
     except Exception as e:  # noqa: BLE001
-        raise _library_err(e) from e
+        raise _books_err(e) from e
+
+
+@router.get("/books/book")
+async def books_book(
+    title: str = Query(min_length=1, max_length=512), author: str | None = Query(None, max_length=256)
+) -> dict[str, Any]:
+    """Pagina cărții: versiunile de pe toate trackerele + descrierea de pe LitRes."""
+    from app.sources import books
+
+    try:
+        b, m = await asyncio.gather(
+            asyncio.to_thread(books.book, author, title), asyncio.to_thread(books.meta, author, title, True)
+        )
+    except Exception as e:  # noqa: BLE001
+        raise _books_err(e) from e
+    return {"book": b, "meta": m}
+
+
+@router.get("/books/meta")
+async def books_meta(
+    title: str = Query(min_length=1, max_length=512), author: str | None = Query(None, max_length=256)
+) -> dict[str, Any]:
+    """Coperta cărții (LitRes) — cerută leneș de fiecare card."""
+    from app.sources import books
+
+    return {"meta": await asyncio.to_thread(books.meta, author, title)}
+
+
+@router.post("/books/add")
+async def books_add(body: BookAddBody, db: AsyncSession = Depends(get_session)) -> dict[str, Any]:
+    from app.sources import books
+
+    try:
+        h = await asyncio.to_thread(books.add, body.source.model_dump())
+    except Exception as e:  # noqa: BLE001
+        raise _books_err(e) from e
+    row = await db.get(AudioBook, h)
+    if not row:
+        row = AudioBook(hash=h, title=body.book.title)
+        db.add(row)
+    row.author, row.title = body.book.author, body.book.title
+    row.narrator, row.cover = body.book.narrator, body.book.cover
+    await db.commit()
+    return {"hash": h}
+
+
+@router.get("/books/library")
+async def books_library(db: AsyncSession = Depends(get_session)) -> dict[str, Any]:
+    """Cărțile din bibliotecă, cu starea descărcării și unde ai rămas."""
+    from app.sources import books
+
+    try:
+        dl = await asyncio.to_thread(books.downloads)
+    except Exception as e:  # noqa: BLE001
+        raise _books_err(e) from e
+    rows = (await db.execute(select(AudioBook))).scalars().all()
+    known = {r.hash for r in rows}
+    items = [_book_row(r, dl["torrents"].get(r.hash)) for r in rows]
+    # adăugate direct în qBittorrent: le arătăm cu numele torrentului
+    for h, t in dl["torrents"].items():
+        if h not in known:
+            p = books.parse_title(t["name"] or "")
+            items.append({"hash": h, "author": p["author"], "title": p["title"], "narrator": p["narrator"],
+                          "cover": None, "track": None, "track_no": 0, "tracks_total": None, "position": 0,
+                          "duration": None, "listened_at": None, "added_at": None, "download": t})
+    items.sort(key=lambda x: x["listened_at"] or x["added_at"] or "", reverse=True)
+    used = sum((x["download"] or {}).get("size_bytes", 0) for x in items)
+    return {"items": items, "used": books._human_size(used) if used else "0 B", "free": dl["free"]}
+
+
+@router.delete("/books/{torrent_hash}")
+async def books_remove(torrent_hash: str, db: AsyncSession = Depends(get_session)) -> dict[str, str]:
+    from app.sources import books
+
+    h = torrent_hash.lower()
+    try:
+        await asyncio.to_thread(books.remove, h)
+    except Exception as e:  # noqa: BLE001
+        raise _books_err(e) from e
+    await db.execute(delete(AudioBook).where(AudioBook.hash == h))
+    await db.commit()
+    return {"ok": "true"}
+
+
+@router.get("/books/{torrent_hash}/tracks")
+async def books_tracks(torrent_hash: str) -> list[dict[str, Any]]:
+    from app.sources import books
+
+    try:
+        return await asyncio.to_thread(books.tracks, torrent_hash.lower())
+    except Exception as e:  # noqa: BLE001
+        raise _books_err(e) from e
+
+
+@router.get("/books/{torrent_hash}/file/{index}")
+async def books_file(torrent_hash: str, index: int):
+    """Fișierul audio (cu Range: playerul sare oriunde în pistă)."""
+    import mimetypes
+
+    from fastapi.responses import FileResponse
+
+    from app.sources import books
+
+    try:
+        path = await asyncio.to_thread(books.track_path, torrent_hash.lower(), index)
+    except Exception as e:  # noqa: BLE001
+        raise _books_err(e) from e
+    mime = {".m4b": "audio/mp4", ".m4a": "audio/mp4", ".opus": "audio/ogg"}.get(path.suffix.lower())
+    return FileResponse(path, media_type=mime or mimetypes.guess_type(path.name)[0] or "audio/mpeg",
+                        headers={"Cache-Control": "private, max-age=86400"})
+
+
+@router.put("/books/{torrent_hash}/progress")
+async def books_progress(
+    torrent_hash: str, body: BookProgressBody, db: AsyncSession = Depends(get_session)
+) -> dict[str, str]:
+    row = await db.get(AudioBook, torrent_hash.lower())
+    if not row:
+        raise HTTPException(status_code=404, detail="Cartea nu e în bibliotecă")
+    row.track, row.track_no, row.position = body.track, body.track_no, body.position
+    row.duration = body.duration
+    if body.tracks_total is not None:
+        row.tracks_total = body.tracks_total
+    row.listened_at = datetime.now(UTC)
+    await db.commit()
     return {"ok": "true"}
 
 
