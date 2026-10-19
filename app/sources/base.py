@@ -29,6 +29,7 @@ class EpisodeInfo:
     episode: int
     name: str | None = None
     still: str | None = None  # URL imagine episod
+    air_date: str | None = None  # „2026-10-25” (TMDB); episoadele viitoare o arată pe card
 
 
 @dataclass

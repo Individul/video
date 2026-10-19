@@ -739,22 +739,12 @@ async def calendar_events(
     ahead: int = Query(60, ge=1, le=120),
     db: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
-    """Calendarul aparițiilor: premiere în cinema, lansări digitale, episoade noi.
-    Serialele „tale” = cele din watchlist sau din istoric (sunt marcate followed)."""
+    """Calendarul aparițiilor: premiere în cinema și lansări digitale. Episoadele noi nu mai
+    apar aici (aglomerau pagina): data lor e pe cardurile episoadelor din pagina serialului."""
     from app.sources import calendar as cal
 
-    rows = (
-        await db.scalars(
-            select(Title.source_url)
-            .where(Title.source == "tmdb", Title.title_type == TitleType.SERIES)
-            .where(
-                Title.id.in_(select(WatchlistItem.title_id)) | Title.id.in_(select(HistoryItem.title_id))
-            )
-        )
-    ).all()
-    followed = [int(m.group(1)) for u in rows if (m := re.search(r"/tv/(\d+)", u or ""))]
     try:
-        events = await asyncio.to_thread(cal.calendar, back, ahead, followed)
+        events = await asyncio.to_thread(cal.calendar, back, ahead, [], None, False)
     except SourceError as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
     titles = await _hits_with_ids(db, [e["hit"] for e in events])
@@ -804,7 +794,8 @@ async def title_episodes(
     await catalog.upsert_episodes(db, title.id, eps)
     await db.commit()
     return sorted(
-        ({"season": e.season, "episode": e.episode, "name": e.name, "still": e.still} for e in eps),
+        ({"season": e.season, "episode": e.episode, "name": e.name, "still": e.still, "air_date": e.air_date}
+         for e in eps),
         key=lambda e: (e["season"], e["episode"]),
     )
 

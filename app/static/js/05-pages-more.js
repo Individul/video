@@ -246,8 +246,6 @@ const CAL_FILTERS = [
   ["all", "Toate"],
   ["cinema", "Premiere în cinema"],
   ["digital", "Lansări digitale"],
-  ["episode", "Episoade noi"],
-  ["mine", "Serialele mele"],
 ];
 let calFilter = "all";
 

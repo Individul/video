@@ -450,9 +450,16 @@ async function renderEpisodesTab(t) {
     const draw = () => {
       grid.innerHTML = "";
       eps.slice(0, shown.count).forEach((e) => {
-        const watched = watchedHtml(byEp.get(`${e.season}x${e.episode}`));
+        // episod încă neapărut (data TMDB în viitor): data pe card, fără pornire degeaba
+        const upcoming = e.air_date && e.air_date > new Date().toISOString().slice(0, 10);
+        const airLabel = upcoming
+          ? new Date(e.air_date + "T12:00:00").toLocaleDateString("ro-RO", { day: "numeric", month: "short", ...(e.air_date.slice(0, 4) !== String(new Date().getFullYear()) ? { year: "numeric" } : {}) })
+          : "";
+        const watched = upcoming
+          ? `<div class="ep-date">${svg(I.calendar || "M19 4h-1V2h-2v2H8V2H6v2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 16H5V9h14z", 13)} Iese ${esc(airLabel)}</div>`
+          : watchedHtml(byEp.get(`${e.season}x${e.episode}`));
         const el = document.createElement("div");
-        el.className = "ep-card";
+        el.className = "ep-card" + (upcoming ? " ep-upcoming" : "");
         el.dataset.ep = `${e.season}x${e.episode}`;
         el.innerHTML = `
           <div class="ep-thumb">
@@ -461,7 +468,8 @@ async function renderEpisodesTab(t) {
             ${watched}
           </div>
           <div class="ep-name">${e.episode}. ${esc(e.name || "Episodul " + e.episode)}</div>`;
-        makeActivatable(el, () => playEpisode(t, e.season, e.episode), `Redă episodul ${e.episode}`);
+        if (upcoming) makeActivatable(el, () => toast(`Episodul ${e.episode} iese pe ${airLabel}`), `Episodul ${e.episode}: iese pe ${airLabel}`);
+        else makeActivatable(el, () => playEpisode(t, e.season, e.episode), `Redă episodul ${e.episode}`);
         grid.appendChild(el);
       });
       let moreWrap = panel.querySelector("#eps-more-wrap");

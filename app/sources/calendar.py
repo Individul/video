@@ -153,12 +153,15 @@ def episode_events(start: date, end: date, followed_ids: list[int]) -> list[dict
     return events
 
 
-def calendar(days_back: int, days_ahead: int, followed_tv_ids: list[int], today: date | None = None) -> list[dict]:
+def calendar(days_back: int, days_ahead: int, followed_tv_ids: list[int], today: date | None = None,
+             episodes: bool = True) -> list[dict]:
     """Evenimentele din [azi - days_back, azi + days_ahead], sortate pe dată, apoi
     serialele tale întâi, apoi după popularitate."""
     today = today or date.today()
     start, end = today - timedelta(days=days_back), today + timedelta(days=days_ahead)
-    events = movie_events(start, end) + episode_events(start, end, followed_tv_ids)
+    events = movie_events(start, end)
+    if episodes:  # pagina Calendar nu le mai arată (aglomerau); datele lor stau pe cardurile episoadelor
+        events += episode_events(start, end, followed_tv_ids)
     events.sort(key=lambda e: (e["date"], not e.get("followed", False), -e["popularity"]))
     for e in events:
         e.pop("popularity", None)

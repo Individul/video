@@ -357,6 +357,7 @@ class TmdbSource(BaseSource):
                         ep["episode_number"],
                         name=ep.get("name"),
                         still=_poster(ep.get("still_path"), base="https://image.tmdb.org/t/p/w300"),
+                        air_date=ep.get("air_date") or None,
                     )
                 )
         return out

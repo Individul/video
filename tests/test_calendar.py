@@ -73,3 +73,8 @@ def test_calendar_fereastra_scurta_exclude_viitorul_indepartat():
     ev = cal.calendar(0, 10, [], today=TODAY)
     assert all(TODAY.isoformat() <= e["date"] <= "2026-10-27" for e in ev)
     assert not any(e["kind"] == "digital" for e in ev)  # 14 oct e înainte de azi, cu back=0
+
+
+def test_calendar_fara_episoade_pentru_pagina():
+    ev = cal.calendar(7, 60, [10], today=TODAY, episodes=False)
+    assert ev and not any(e["kind"] == "episode" for e in ev)  # doar cinema + digital
