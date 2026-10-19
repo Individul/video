@@ -188,8 +188,8 @@ async function loadAudiobooks(r) {
       const res = await api(`/api/books/browse${job.slug ? `?genre=${job.slug}` : ""}`);
       if (seq !== viewSeq) return;
       if (res.books.length) job.row.fill(res.books.slice(0, 30));
-      if (job.slug === "popular") bkExplore(wrap, res.books);
       else job.row.remove();
+      if (job.slug === "popular") bkExplore(wrap, res.books);
     } catch (_) {
       job.row.remove();
     }
