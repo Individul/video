@@ -107,7 +107,7 @@ services:
     container_name: acestream
     volumes:
       - ./acestream:/data        # stare + cache (cache-ul live stă pe disc, nu în RAM)
-    mem_limit: 450m              # în repaus ~140 MB; limita protejează restul serverului
+    mem_limit: 1g                # ~140 MB în repaus, ~45 MB per spectator live; 450 MB ajungea doar la 2–3 spectatori
     logging: *logging
     restart: unless-stopped
     ports:
