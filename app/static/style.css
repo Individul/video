@@ -1248,7 +1248,7 @@ body.cinema-open { overflow: hidden; }
   border: 1px solid #34373a; background: rgba(var(--ink), 0.04); color: var(--text);
   border-radius: 10px; padding: 0.42rem 0.7rem; cursor: pointer; font-size: 0.82rem;
 }
-.sp-var svg { fill: var(--accent); }
+.sp-var svg { fill: var(--accent-text); } /* pe alb, galbenul pur nu se vede */
 .sp-var small { color: var(--sub); font-size: 0.72rem; }
 .sp-var:hover { border-color: var(--accent-text); background: rgba(255, 226, 22, 0.08); }
 @media (max-width: 760px) {
