@@ -81,8 +81,13 @@ async function loadLive() {
     if (live.length) {
       box.insertAdjacentHTML("beforeend", `<div class="lv-sec"><span class="lv-dot"></span>În direct acum <small>${live.length}</small></div>`);
       const tiles = document.createElement("div");
-      // 1 meci: banner lat (o placă singură arăta pierdută); 2: două coloane; 3+: grilă
-      tiles.className = `lv-tiles n${Math.min(live.length, 3)}`;
+      // plăcile umplu mereu lățimea listei: 1 = banner lat, 2–3 = coloane egale, 4+ = câte încap
+      tiles.className = `lv-tiles ${live.length <= 3 ? "n" + live.length : "nmany"}`;
+      if (live.length > 3) {
+        // rânduri echilibrate (5 → 3+2, 7 → 4+3), fără o placă singură pe ultimul rând
+        const rows = Math.ceil(live.length / 4);
+        tiles.style.setProperty("--lv-cols", Math.ceil(live.length / rows));
+      }
       live.forEach((ev) => {
         const tile = document.createElement("div");
         tile.className = "lv-tile";
