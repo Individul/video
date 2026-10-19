@@ -334,10 +334,7 @@ function renderPlayer(t, source, data, { season = null, episode = null, seekTo =
   playerBox.innerHTML = playerHtml();
 
   const video = playerBox.querySelector("#video");
-  video.dataset.seekTo = seekTo || "";
-  // Safari + MKV: fără redare directă (n-ar porni deloc) — piesele audio o pornesc prin conversie
-  if (nativeContainerOk(data.name)) video.src = data.stream_url;
-  else $("#buffer")?.classList.remove("hidden");
+  video.src = data.stream_url;
 
   // rândul de sus: sezon/episod + calitatea versiunii; jos-dreapta: starea torrentului
   const subParts = [];

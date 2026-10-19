@@ -1289,16 +1289,6 @@ body.cinema-open { overflow: hidden; }
 .cin-video .video-error .live-open { display: inline-flex; align-items: center; gap: 0.4rem; margin-top: 0.9rem; text-decoration: none; }
 .cin-video.live-failed .cin-bigplay, .cin-video.live-failed .cin-progress { display: none !important; }
 
-/* telefon: pornit fără sunet (politica de autoplay) — un tap readuce sunetul */
-.cin-unmute {
-  position: absolute; top: 1rem; left: 50%; transform: translateX(-50%); z-index: 4;
-  display: inline-flex; align-items: center; gap: 0.45rem;
-  padding: 0.6rem 1.1rem; border-radius: 999px; border: none; cursor: pointer;
-  background: rgba(255, 226, 22, 0.95); color: #111; font-weight: 700; font-size: 0.95rem;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
-}
-.cin-unmute svg { fill: currentColor; }
-
 /* =================== meniul lateral (desktop): text lângă iconiță, pe grupuri =================== */
 .nav-group, .nav-collapse { display: none; }
 @media (min-width: 761px) {
