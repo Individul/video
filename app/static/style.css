@@ -1273,3 +1273,13 @@ body.cinema-open { overflow: hidden; }
 #sp-note a:hover { text-decoration: underline; }
 .cin-video .video-error .live-open { display: inline-flex; align-items: center; gap: 0.4rem; margin-top: 0.9rem; text-decoration: none; }
 .cin-video.live-failed .cin-bigplay, .cin-video.live-failed .cin-progress { display: none !important; }
+
+/* release ușor pentru telefon/tabletă */
+.mob-badge {
+  background: rgba(96, 165, 250, 0.16);
+  color: #8ab8ff;
+  border-radius: 5px;
+  padding: 0 5px;
+  font-size: 0.66rem;
+  font-weight: 800;
+}
