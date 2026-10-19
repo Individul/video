@@ -1484,3 +1484,25 @@ body.cinema-open { overflow: hidden; }
   .lv-row { grid-template-columns: 52px minmax(0, 1fr); }
   .lv-row .sp-var { grid-column: 1 / -1; justify-self: end; }
 }
+/* Live: corpul plăcii + steagul pe același rând cu competiția */
+.lv-tile-body { display: flex; flex-direction: column; gap: 0.45rem; min-width: 0; }
+.lv-meta { display: block; line-height: 1.5; }
+.lv-meta .flag { display: inline-block; vertical-align: -2px; margin-right: 0.35rem; }
+/* 2 meciuri: două coloane egale; 1 meci: banner lat, cât lista de dedesubt */
+.lv-tiles.n2 { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 1100px; }
+.lv-tiles.n1 { grid-template-columns: 1fr; max-width: 1100px; }
+.lv-tiles.n1 .lv-tile {
+  flex-direction: row; align-items: center; gap: 1.4rem; padding: 1.2rem 1.4rem;
+  border-color: rgba(255, 77, 77, 0.35);
+  background: linear-gradient(90deg, rgba(255, 77, 77, 0.08), transparent 55%), var(--card);
+}
+.lv-tiles.n1 .lv-tile-body { flex: 1; }
+.lv-tiles.n1 .lv-teams { font-size: 1.45rem; }
+.lv-tiles.n1 .lv-meta { font-size: 0.9rem; }
+.lv-tiles.n1 .lv-tile-foot { margin: 0; padding: 0; }
+.lv-tiles.n1 .sp-var { padding: 0.65rem 1.3rem; font-size: 1rem; background: var(--accent); border-color: var(--accent); color: #111; }
+.lv-tiles.n1 .sp-var svg { fill: #111; }
+@media (max-width: 760px) {
+  .lv-tiles.n2 { grid-template-columns: 1fr; }
+  .lv-tiles.n1 .lv-tile { flex-direction: column; align-items: stretch; }
+}

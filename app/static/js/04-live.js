@@ -81,14 +81,17 @@ async function loadLive() {
     if (live.length) {
       box.insertAdjacentHTML("beforeend", `<div class="lv-sec"><span class="lv-dot"></span>În direct acum <small>${live.length}</small></div>`);
       const tiles = document.createElement("div");
-      tiles.className = "lv-tiles";
+      // 1 meci: banner lat (o placă singură arăta pierdută); 2: două coloane; 3+: grilă
+      tiles.className = `lv-tiles n${Math.min(live.length, 3)}`;
       live.forEach((ev) => {
         const tile = document.createElement("div");
         tile.className = "lv-tile";
         tile.innerHTML = `
-          <span class="lv-badge">LIVE${ev.when ? ` · ${esc(ev.when)}` : ""}</span>
-          <div class="lv-teams">${esc(ev.home)} – ${esc(ev.away)}</div>
-          <div class="lv-meta">${meta(ev)}</div>
+          <div class="lv-tile-body">
+            <span class="lv-badge">LIVE${ev.when ? ` · ${esc(ev.when)}` : ""}</span>
+            <div class="lv-teams">${esc(ev.home)} – ${esc(ev.away)}</div>
+            <div class="lv-meta">${meta(ev)}</div>
+          </div>
           <div class="lv-tile-foot">${playBtn()}</div>`;
         onPlay(tile, ev);
         tiles.appendChild(tile);
