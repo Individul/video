@@ -1622,3 +1622,11 @@ body.bk-open main#content { padding-bottom: 7rem; }
 .bp-tracks button span { color: var(--sub); min-width: 2em; text-align: right; font-variant-numeric: tabular-nums; }
 .bp-tracks button:hover { background: rgba(var(--ink), 0.06); }
 .bp-tracks button.on { color: var(--accent-text); font-weight: 700; }
+@media (max-width: 760px) {
+  #bk-player { left: 8px; right: 8px; bottom: calc(72px + env(safe-area-inset-bottom)); gap: 0.5rem; padding: 8px; }
+  body.bk-open main#content { padding-bottom: 10rem; }
+  .bp-cover, .bp-title span, .bp-b[data-a="list"] { display: none; }
+  .bp-b { width: 34px; }
+  .bk-hero { flex-direction: column; gap: 1rem; }
+  .bk-cover { flex-basis: auto; width: min(240px, 70vw); }
+}
