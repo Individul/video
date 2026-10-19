@@ -344,6 +344,7 @@ async function playLive({ name, ref, url }) {
             } catch (_) {}
             stopSession();
             $("#buffer")?.classList.add("hidden");
+            playerBox.querySelector(".cin-video")?.classList.add("live-failed"); // fără play mare peste mesaj
             const box = playerBox.querySelector("#video-error");
             if (box) {
               // acestream:// deschide canalul direct în aplicația Ace Stream de pe calculator
