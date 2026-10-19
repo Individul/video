@@ -33,6 +33,12 @@ def test_mobile_score_prefers_light_but_keeps_ru_dub_dominant():
     assert torrents.mobile_score(heavy, sh) > torrents.mobile_score(light_en, se)  # dublajul RU contează mai mult
 
 
+def test_hevc_never_mobile_even_with_tag():
+    assert not torrents.is_mobile(r("[iPad] / Dune [2021, BDRip, HEVC] Dub", "1.9 GB"))
+    assert not torrents.is_mobile(r("Dune (2021) WEB-DL x265 10bit | КПК", "1.2 GB"))
+    assert not torrents.is_mobile(r("Dune (2021) WEB-DL 1080p 10-bit", "2.0 GB"))
+
+
 def test_4k_only_as_separate_mark():
     assert torrents.quality_label("Spider-Man (2026) WEB-DL от ELEKTRI4KA") is None
     assert torrents.quality_label("Spider-Man (2026) WEB-DL 2160p | 4К | HDR") == "4K"

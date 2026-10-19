@@ -417,19 +417,34 @@ async function renderEpisodesTab(t) {
     renderSeason(epsBySeason[s] || [], s);
   }
 
+  const watchedHtml = (h) => {
+    if (!h || !h.duration_seconds) return "";
+    const pct = Math.min(100, Math.round((h.position_seconds / h.duration_seconds) * 100));
+    return pct >= 92 ? `<div class="ep-done">${svg(I.check, 14)} văzut</div>` : `<div class="ep-progress"><i style="width:${pct}%"></i></div>`;
+  };
+  // progresul salvat în timpul redării (player-ul trimite „cinema:progress”) apare pe loc pe card
+  const onProgress = (ev) => {
+    const p = ev.detail;
+    if (ds !== detailSeq) return window.removeEventListener("cinema:progress", onProgress); // alt titlu
+    if (p.title_id !== t.id || p.season == null || p.episode == null) return;
+    const key = `${p.season}x${p.episode}`;
+    byEp.set(key, { ...(byEp.get(key) || {}), ...p });
+    const thumb = grid.querySelector(`.ep-card[data-ep="${key}"] .ep-thumb`);
+    if (!thumb) return;
+    thumb.querySelectorAll(".ep-done, .ep-progress").forEach((x) => x.remove());
+    thumb.insertAdjacentHTML("beforeend", watchedHtml(byEp.get(key)));
+  };
+  window.addEventListener("cinema:progress", onProgress);
+
   function renderSeason(eps, s) {
     const shown = { count: CHUNK };
     const draw = () => {
       grid.innerHTML = "";
       eps.slice(0, shown.count).forEach((e) => {
-        const h = byEp.get(`${e.season}x${e.episode}`);
-        let watched = "";
-        if (h && h.duration_seconds) {
-          const pct = Math.min(100, Math.round((h.position_seconds / h.duration_seconds) * 100));
-          watched = pct >= 92 ? `<div class="ep-done">${svg(I.check, 14)} văzut</div>` : `<div class="ep-progress"><i style="width:${pct}%"></i></div>`;
-        }
+        const watched = watchedHtml(byEp.get(`${e.season}x${e.episode}`));
         const el = document.createElement("div");
         el.className = "ep-card";
+        el.dataset.ep = `${e.season}x${e.episode}`;
         el.innerHTML = `
           <div class="ep-thumb">
             ${e.still ? `<img loading="lazy" decoding="async" alt="" src="${escUrl(e.still)}">` : `<div class="noimg">S${e.season}E${e.episode}</div>`}

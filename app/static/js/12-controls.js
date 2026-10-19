@@ -267,7 +267,15 @@ let currentProgressSave = null;
 function trackProgress(video, t, season, episode, ctx) {
   let lastAt = 0;
   let lastPos = -1;
-  const send = (pos, dur) =>
+  const send = (pos, dur) => {
+    // pagina titlului (grila de episoade) își actualizează progresul pe loc, fără reîncărcare
+    if (t.id)
+      window.dispatchEvent(new CustomEvent("cinema:progress", {
+        detail: { title_id: t.id, season: season ?? null, episode: episode ?? null, position_seconds: pos, duration_seconds: dur || null },
+      }));
+    return sendHistory(pos, dur);
+  };
+  const sendHistory = (pos, dur) =>
     !t.id // torrent pornit din „Căutare torrente” (fără titlu în catalog): nu are istoric
       ? Promise.resolve()
       :

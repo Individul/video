@@ -120,13 +120,15 @@ MOBILE_EXTRA = 5  # câte release-uri ușoare se adaugă peste primele N din lis
 
 def is_mobile(item: dict) -> bool:
     name = item.get("name") or ""
+    n = name.lower()
+    # HEVC / 10-bit / 4K nu sunt „mobil” nici cu marcaj [iPad]/КПК: Safari pe iPhone nu redă MKV,
+    # iar conversia de pe server copiază video-ul doar pentru H.264
+    if _HEVC_RE.search(n) or re.search(r"10.?bit|hi10", n) or quality_label(name) in ("4K", "CAM"):
+        return False
     if _MOBILE_TAG_RE.search(name):
         return True
     size_gb = _parse_size_gb(item.get("size"))
-    if size_gb is None or not 0.4 <= size_gb <= MOBILE_MAX_GB:
-        return False
-    q = quality_label(name)
-    return q not in ("4K", "CAM") and not _HEVC_RE.search(name.lower())
+    return size_gb is not None and 0.4 <= size_gb <= MOBILE_MAX_GB
 
 
 def mobile_score(item: dict, score: float) -> float:
