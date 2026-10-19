@@ -24,12 +24,28 @@ def _warm_calendar() -> None:
         pass
 
 
+def _warm_books() -> None:
+    """Fluxurile de cărți audio în cache + subgenurile/etichetele lor de pe LitRes adunate în fundal,
+    ca filtrele și „Explorează” să fie gata înainte să deschizi pagina."""
+    import time
+
+    from app.sources import books
+
+    time.sleep(20)  # după ce pornește tot restul
+    try:
+        books.enqueue_enrich(list(books._all_feeds().values()))
+    except Exception:  # noqa: BLE001 — doar o optimizare
+        pass
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
     if Config.TMDB_API_KEY:
         # fir daemon: nu ține procesul (sau testele) în viață la oprire
         threading.Thread(target=_warm_calendar, daemon=True).start()
+    if Config.TORZNAB_URL and Config.TORZNAB_API_KEY:
+        threading.Thread(target=_warm_books, daemon=True).start()
     yield
 
 
