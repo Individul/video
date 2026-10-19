@@ -31,3 +31,11 @@ def test_mobile_score_prefers_light_but_keeps_ru_dub_dominant():
     assert sh > sl  # pe desktop rămâne 1080p
     assert torrents.mobile_score(light, sl) > torrents.mobile_score(heavy, sh)  # pe telefon câștigă cel ușor
     assert torrents.mobile_score(heavy, sh) > torrents.mobile_score(light_en, se)  # dublajul RU contează mai mult
+
+
+def test_4k_only_as_separate_mark():
+    assert torrents.quality_label("Spider-Man (2026) WEB-DL от ELEKTRI4KA") is None
+    assert torrents.quality_label("Spider-Man (2026) WEB-DL 2160p | 4К | HDR") == "4K"
+    assert torrents.quality_label("Spider-Man [2026, 4K, HDR]") == "4K"
+    assert torrents.quality_label("Spider-Man UHD WEB-DL") == "4K"
+    assert torrents.is_mobile({"name": "Человек-паук (2026) WEB-DL от ELEKTRI4KA", "size": "2.18 GB"})

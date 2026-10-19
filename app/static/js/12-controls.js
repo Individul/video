@@ -29,10 +29,18 @@ function enhanceVideo(video, { ctx, prev = null, next = null } = {}) {
   const prefs = loadPlayerPrefs();
   video.volume = prefs.volume != null ? prefs.volume : 1;
   video.muted = !!prefs.muted;
+  let autoMuted = false; // pornit fără sunet de noi (telefon): nu se ține minte ca preferință
+  let unmuteBtn = null;
+  const clearAutoMute = () => {
+    autoMuted = false;
+    if (unmuteBtn) unmuteBtn.remove();
+    unmuteBtn = null;
+  };
   const syncVol = () => {
     vol.value = video.muted ? 0 : video.volume;
     muteBtn.innerHTML = svg(video.muted || video.volume === 0 ? I.mute : I.vol, 24);
-    savePlayerPrefs({ ...loadPlayerPrefs(), volume: video.volume, muted: video.muted });
+    if (autoMuted && !video.muted) clearAutoMute();
+    if (!autoMuted) savePlayerPrefs({ ...loadPlayerPrefs(), volume: video.volume, muted: video.muted });
   };
   vol.addEventListener("input", () => {
     video.volume = +vol.value;
@@ -40,6 +48,39 @@ function enhanceVideo(video, { ctx, prev = null, next = null } = {}) {
   });
   muteBtn.addEventListener("click", () => (video.muted = !video.muted));
   video.addEventListener("volumechange", syncVol);
+
+  // Telefoanele/tabletele blochează pornirea CU SUNET dacă n-a fost o atingere chiar atunci
+  // (între „Vizionează” și primele date trec câteva secunde). Pornim atunci fără sunet și
+  // arătăm „Atinge pentru sunet” — un singur tap și merge normal.
+  const tryAutoplay = () => {
+    if (!ctx.alive || !video.paused) return;
+    const p = video.play();
+    if (!p || !p.catch) return;
+    p.catch((e) => {
+      if (!ctx.alive || e.name !== "NotAllowedError" || video.muted) return;
+      autoMuted = true;
+      video.muted = true;
+      video
+        .play()
+        .then(() => {
+          if (!ctx.alive || unmuteBtn) return;
+          unmuteBtn = document.createElement("button");
+          unmuteBtn.className = "cin-unmute";
+          unmuteBtn.innerHTML = `${svg(I.mute, 20)} Atinge pentru sunet`;
+          unmuteBtn.addEventListener("click", (ev) => {
+            ev.stopPropagation();
+            video.muted = false;
+          });
+          video.closest(".cin-video")?.appendChild(unmuteBtn);
+        })
+        .catch(() => {
+          autoMuted = false; // nici fără sunet nu merge: rămâne butonul mare de play
+          video.muted = !!loadPlayerPrefs().muted;
+        });
+    });
+  };
+  video.addEventListener("canplay", tryAutoplay, { once: true });
+  ctx.onStop.push(clearAutoMute);
   syncVol();
 
   // play / pauză

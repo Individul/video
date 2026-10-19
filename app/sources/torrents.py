@@ -40,7 +40,8 @@ def _parse_size_gb(size: str | None) -> float | None:
 
 def quality_label(name: str) -> str | None:
     n = (name or "").lower()
-    if re.search(r"2160|4k|uhd", n):
+    # „4K” doar ca marcaj separat: numele de grup „ELEKTRI4KA” nu e 4K (era 2,18 GB)
+    if re.search(r"2160|(?<![a-zа-я0-9])4[kк](?![a-zа-я0-9])|\buhd\b", n):
         return "4K"
     if "1080" in n:
         return "1080p"
