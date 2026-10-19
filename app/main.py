@@ -41,4 +41,6 @@ app.mount("/static", StaticFiles(directory=_STATIC), name="static")
 
 @app.get("/")
 async def index():
-    return FileResponse(_STATIC / "index.html")
+    # no-cache = reverifică la fiecare deschidere (ETag): fără el, Safari pe iPhone ține pagina
+    # veche din cache și deci și scripturile vechi (?v= din ea) după un update
+    return FileResponse(_STATIC / "index.html", headers={"Cache-Control": "no-cache"})
