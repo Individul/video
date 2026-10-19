@@ -26,8 +26,9 @@ from app.sources.torrents import (
 )
 
 KINDS = {
-    "music": {"cats": "3000,3010,3040", "dir": "/media/music", "player": "/music/"},
-    "audiobooks": {"cats": "3030", "dir": "/media/audiobooks", "player": "/audiobookshelf/"},
+    # „exclude”: trackerele pun cărțile audio și sub „Audio” (3000) — pe Muzică nu le vrem
+    "music": {"cats": "3000,3010,3040", "exclude": {"3030", "7020"}, "dir": "/media/music", "player": "/music/"},
+    "audiobooks": {"cats": "3030", "exclude": set(), "dir": "/media/audiobooks", "player": "/audiobookshelf/"},
 }
 _HASH = re.compile(r"^[0-9a-f]{40}$")
 _CACHE_TTL = 300
@@ -79,7 +80,7 @@ def browse(kind: str, q: str | None = None, limit: int = 100) -> list[dict]:
         futures = [pool.submit(_try_indexer, lambda i: _browse_one(i, cfg["cats"], q, limit), idx) for idx in indexers]
         for f in futures:
             results.extend(f.result())
-    results = dedupe_results(results)
+    results = [r for r in dedupe_results(results) if not cfg["exclude"] & set(r.pop("cats", None) or ())]
     if q:
         results.sort(key=lambda r: r.get("seeds") or 0, reverse=True)
     else:

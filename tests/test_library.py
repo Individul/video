@@ -119,3 +119,15 @@ def test_remove_validates_hash(monkeypatch):
     with pytest.raises(SourceError):
         library.remove("../x")
     library.remove("c" * 40)
+
+
+def test_music_skips_audiobooks_filed_under_audio(jackett, monkeypatch):
+    # prima carte (Булгаков) e și în „Audio” (3000), celelalte două sunt muzică lossless (3040)
+    first, rest = FEED.split(b"</item>", 1)
+    feed = (first + b'<torznab:attr name="category" value="3000"/></item>'
+            + rest.replace(b'value="3030"/></item>', b'value="3040"/></item>'))
+    import requests
+    monkeypatch.setattr(requests, "get", lambda url, **kw: Resp(feed))
+    res = library.browse("music")
+    assert len(res) == 2 and not any(r["name"].startswith("Булг") for r in res)
+    assert "cats" not in res[0]

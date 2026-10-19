@@ -301,10 +301,13 @@ def _parse_torznab(xml_bytes: bytes) -> list[dict]:
         guid = item.findtext("guid") or ""
         # Jackett foloseste namespace torznab:attr (si pe unii feed-uri attr simplu)
         attrs = {}
+        cats: list[str] = []  # „category” se repetă (categoria standard + cea a trackerului)
         for a in item.iter():
             tag = a.tag.rsplit("}", 1)[-1]  # scoate {ns} prefixul
             if tag == "attr" and a.get("name"):
                 attrs[a.get("name")] = a.get("value") or ""
+                if a.get("name") == "category" and a.get("value"):
+                    cats.append(a.get("value"))
         seeds = attrs.get("seeders")
         magnet = attrs.get("magneturl") or None
         torrent_url = None
@@ -330,6 +333,7 @@ def _parse_torznab(xml_bytes: bytes) -> list[dict]:
             "source": "jackett",
             "indexer": attrs.get("jackettindexer") or attrs.get("jackettindexers") or attrs.get("indexer") or None,
             "published": _iso_date(item.findtext("pubDate")),
+            "cats": cats,
         })
     return out
 
