@@ -165,3 +165,21 @@ def test_add_magnet(monkeypatch):
     monkeypatch.setattr(Config, "TORZNAB_URL", "http://jackett:9117")
     with pytest.raises(SourceError, match="nepermis"):
         books.add({"torrent_url": "http://evil.example/x.torrent"})
+
+
+def test_author_spellings_group_together():
+    k = book_key("Михаил Булгаков", "Мастер и Маргарита")
+    for a in ("Булгаков Михаил Афанасьевич", "Михаил Афанасьевич Булгаков", "М.А.Булгаков", "Булгаков", "Михал Булгаков"):
+        assert book_key(a, "Мастер и Маргарита") == k, a
+    assert book_key("Олег Сапфир, Марк Альтергот", "X") == book_key("Марк Альтергот, Олег Сапфир", "X")
+
+
+def test_parse_messy_rutracker_brackets():
+    p = parse_title("[Русская] Михаил Булгаков - Мастер и Маргарита [Александр Клюквин, Максим Суханов, Дарья Мороз, "
+                    "2006, OGG 32-48 kbps]. Полное издание. Аудиокнига")
+    assert p["title"] == "Мастер и Маргарита" and p["narrator"].startswith("Александр Клюквин")
+    p = parse_title("Булгаков Михаил - Мастер и Маргарита [2006, Максим Суханов, Дарья Мороз, MP3, 160 kbps]")
+    assert p["year"] == "2006" and p["narrator"] == "Максим Суханов, Дарья Мороз"
+    p = parse_title("[Английский] Bulgakov Mikhail / Булгаков Михаил - The Master and Margarita / Мастер и Маргарита "
+                    "[Julian Rhind-Tutt, 2009 г., MP3, 64 kbps]")
+    assert p["year"] == "2009" and p["narrator"] == "Julian Rhind-Tutt"

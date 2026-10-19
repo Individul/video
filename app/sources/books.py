@@ -75,7 +75,7 @@ def media_root() -> Path:
 
 _FMT = re.compile(r"^(mp3|m4b|m4a|aac|flac|ogg|opus|alac|ape|wav|wma)$", re.I)
 _BITRATE = re.compile(r"(?i)\b(?:vbr\s*)?\d{2,3}(?:-\d{2,3})?\s*kbps\b")
-_YEAR = re.compile(r"^(1[89]\d\d|20\d\d)$")
+_YEAR = re.compile(r"^(1[89]\d\d|20\d\d)(?:\s*г\.?)?$")
 _CYR = re.compile(r"[а-яё]", re.I)
 
 
@@ -120,8 +120,9 @@ def parse_title(name: str) -> dict:
             info["narrator"] = ", ".join(parts)
         info["author"], info["author_alt"] = _pick(author)
     else:  # RuTracker: Автор - Название [Чтец, 2026, 128 kbps, MP3]
-        m = re.match(r"^(.*?)\s*\[([^\[\]]*)\]\s*(?:\([^()]*\)\s*)?$", s)
-        head, bracket = (m.group(1), m.group(2)) if m else (s, "")
+        # ultimul […] cu detaliile; ce urmează după el („. Полное издание”) e zgomot
+        m = re.match(r"^(.*)\[([^\[\]]*)\]([^\[\]]*)$", s)
+        head, bracket = (m.group(1).strip(), m.group(2)) if m else (s, "")
         if " - " in head:
             author, title = head.split(" - ", 1)
             a, alt = _pick(author)
@@ -133,7 +134,7 @@ def parse_title(name: str) -> dict:
             if not p:
                 continue
             if _YEAR.match(p) and not info["year"]:
-                info["year"] = p
+                info["year"] = p[:4]
             elif _BITRATE.search(p):
                 info["bitrate"] = p
             elif _FMT.match(p):
@@ -142,6 +143,7 @@ def parse_title(name: str) -> dict:
                 narrators.append(p)  # cititorii sunt înaintea anului
             else:
                 rest.append(p)
+        narrators = narrators or rest  # „[2006, Максим Суханов, Дарья Мороз, MP3]”: anul e primul
         if narrators:
             info["narrator"] = ", ".join(narrators)
     title, info["title_alt"] = _pick(title.strip(" -"))
@@ -158,10 +160,27 @@ def _norm(s: str | None) -> str:
     return re.sub(r"[^0-9a-zа-я]+", "", (s or "").lower().replace("ё", "е"))
 
 
+_PATRONYMIC = re.compile(r"(вич|вна|ична|ич)$")
+
+
+def surnames(author: str | None) -> list[str]:
+    """Numele de familie ale autorilor, oricum ar fi scrise: „Михаил Булгаков”, „Булгаков Михаил
+    Афанасьевич”, „Михаил Афанасьевич Булгаков”, „М.А. Булгаков” -> ["Булгаков"]."""
+    out = []
+    for a in re.split(r",|;|\s&\s|\sи\s", author or ""):
+        w = [x for x in re.findall(r"[^\s.()]+", a) if len(x) > 1]  # fără inițiale
+        if not w:
+            continue
+        if len(w) >= 3 and _PATRONYMIC.search(w[-1].lower()):
+            out.append(w[0])  # Фамилия Имя Отчество
+        else:
+            out.append(w[-1])  # Имя Фамилия / Имя Отчество Фамилия
+    return out
+
+
 def book_key(author: str | None, title: str) -> str:
-    """Aceeași carte de la cititori diferiți: autorii (în orice ordine a cuvintelor) + titlul."""
-    words = sorted(_norm(w) for w in re.split(r"[\s,]+", author or "") if _norm(w))
-    raw = "|".join(words) + "#" + _norm(title)
+    """Aceeași carte de la cititori diferiți: numele de familie ale autorilor + titlul."""
+    raw = "|".join(sorted(_norm(x) for x in surnames(author))) + "#" + _norm(title)
     return hashlib.sha1(raw.encode()).hexdigest()[:16]
 
 
@@ -251,8 +270,8 @@ def browse(genre: str | None = None, q: str | None = None) -> list[dict]:
 
 
 def _surname(author: str | None) -> str:
-    first = (author or "").split(",")[0].split()
-    return first[-1] if first else ""
+    names = surnames(author)
+    return names[0] if names else ""
 
 
 def book(author: str | None, title: str) -> dict | None:
@@ -320,7 +339,8 @@ def _litres_get(path: str, **params):
 def _litres_match(author: str | None, title: str, items: list[dict]) -> dict | None:
     sur = _norm(_surname(author))
     t = _norm(title)
-    for it in items or []:
+    items = sorted(items or [], key=lambda it: _norm((it.get("instance") or it).get("title")) != t)  # exact întâi
+    for it in items:
         x = it.get("instance") or it
         authors = [_norm(p.get("full_name")) for p in x.get("persons") or [] if p.get("role") in (None, "author")]
         lt = _norm(x.get("title"))
