@@ -224,3 +224,18 @@ def test_apple_find_matches_title_and_author(monkeypatch):
     m = books._apple_find("Luiz Schwarcz", "The First Reader: On Writers and Editors (On Writing)")
     assert m["cover"] == "https://is1.mzstatic.com/x/600x600bb.jpg" and m["description"] == "Despre editori"
     assert books._apple_find("Someone Else", "The First Reader") is None  # alt autor
+
+
+def test_popular_merges_all_feeds_by_seeds(monkeypatch):
+    def fake_browse(genre=None, q=None):
+        if genre == "popular":
+            return books.popular(limit=3)
+        if genre == "fantasy":
+            raise SourceError("căzut")  # un gen indisponibil nu strică lista
+        mk = lambda k, s: {"key": k, "seeds": s, "title": k}
+        return {None: [mk("a", 5), mk("b", 50)], "detective": [mk("a", 9), mk("c", 20), mk("d", 1)]}.get(genre, [])
+
+    monkeypatch.setattr(books, "browse", fake_browse)
+    out = books.popular(limit=3)
+    assert [(b["key"], b["seeds"]) for b in out] == [("b", 50), ("c", 20), ("a", 9)]
+    assert books.genres()[0] == {"slug": "popular", "name": "Populare acum"}

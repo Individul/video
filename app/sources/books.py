@@ -250,8 +250,29 @@ def _releases(genre: str | None, q: str | None) -> list[dict]:
     return results
 
 
+POPULAR = "popular"
+
+
+def popular(limit: int = 60) -> list[dict]:
+    """„Populare acum”: trackerele nu au clasament și nici paginare (doar ultimele ~50 pe flux),
+    așa că strângem fluxurile tuturor genurilor + noutățile (genurile lente ajung luni în urmă)
+    și ordonăm după seederi — câți oameni o împart acum. Aceeași carte apare o singură dată."""
+    slugs = [None] + [g for g, _, _ in GENRES]
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        feeds = list(pool.map(lambda g: _try_indexer(lambda x: browse(x), g), slugs))
+    merged: dict[str, dict] = {}
+    for feed in feeds:
+        for b in feed:
+            have = merged.get(b["key"])
+            if not have or b["seeds"] > have["seeds"]:
+                merged[b["key"]] = b
+    return sorted(merged.values(), key=lambda b: b["seeds"], reverse=True)[:limit]
+
+
 def browse(genre: str | None = None, q: str | None = None) -> list[dict]:
-    """Cărți: noutăți (toate sau pe gen, cele mai noi întâi) sau căutare (după seederi)."""
+    """Cărți: noutăți (toate sau pe gen, cele mai noi întâi), populare sau căutare (după seederi)."""
+    if genre == POPULAR and not q:
+        return popular()
     q = " ".join((q or "").split())[:100] or None
     key = f"{genre or ''}|{(q or '').lower()}"
     hit = _cache.get(key)
@@ -286,7 +307,7 @@ def book(author: str | None, title: str) -> dict | None:
 
 
 def genres() -> list[dict]:
-    return [{"slug": s, "name": n} for s, n, _ in GENRES]
+    return [{"slug": POPULAR, "name": "Populare acum"}] + [{"slug": s, "name": n} for s, n, _ in GENRES]
 
 
 # ---------- LitRes: copertă, descriere, genuri ----------
