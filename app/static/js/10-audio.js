@@ -14,8 +14,21 @@ const audioLabel = (tr) => {
   return `${tr.index + 1}. ${name} — ${tr.codec.toUpperCase()}${ch}`;
 };
 
+// iPhone/iPad (iOS 17.1+) au ManagedMediaSource în loc de MediaSource (același mod de lucru)
+const MSE_CLASS = window.ManagedMediaSource || window.MediaSource;
+const IS_MANAGED_MSE = !!window.ManagedMediaSource && MSE_CLASS === window.ManagedMediaSource;
+/* Safari (iPhone/iPad/Mac) nu redă deloc containerele MKV/AVI: acolo fișierul trece din prima
+   prin conversia de pe server (video copiat, sunet AAC, MP4 fragmentat) */
+const APPLE_WEBKIT = /Apple/.test(navigator.vendor || "");
+function nativeContainerOk(name) {
+  return !(APPLE_WEBKIT && /\.(mkv|avi|wmv|flv)$/i.test(name || ""));
+}
+
 function mseAudioPlayer(video, { url, track, codecs, duration, startAt }) {
-  const ms = new MediaSource();
+  const ms = new MSE_CLASS();
+  // iOS: fără asta ManagedMediaSource cere o sursă alternativă pentru AirPlay și nu pornește
+  if (IS_MANAGED_MSE) video.disableRemotePlayback = true;
+  const MAX_AHEAD = IS_MANAGED_MSE ? 60 : 120; // telefonul are mai puțină memorie
   const objUrl = URL.createObjectURL(ms);
   let sb = null, gen = 0, ctrl = null, loadingFrom = null, destroyed = false;
   const opened = new Promise((res) => ms.addEventListener("sourceopen", res, { once: true }));
@@ -80,7 +93,7 @@ function mseAudioPlayer(video, { url, track, codecs, duration, startAt }) {
     try {
       while (my === gen && !destroyed) {
         // nu luăm mai mult de ~2 min în avans; în urmă păstrăm 30 s
-        while (ahead() > 120 && my === gen && !destroyed) await sleep(1000);
+        while (ahead() > MAX_AHEAD && my === gen && !destroyed) await sleep(1000);
         const { value, done } = await reader.read();
         if (done || my !== gen || destroyed) break;
         await append(value);
@@ -127,7 +140,7 @@ function browserPlaysAudio(codec) {
   if (!c) return false; // DTS, TrueHD, PCM...: niciun browser
   try {
     return (
-      (window.MediaSource && MediaSource.isTypeSupported(`audio/mp4; codecs="${c}"`)) ||
+      (MSE_CLASS && MSE_CLASS.isTypeSupported(`audio/mp4; codecs="${c}"`)) ||
       !!document.createElement("video").canPlayType(`audio/mp4; codecs="${c}"`)
     );
   } catch (_) {
@@ -136,7 +149,8 @@ function browserPlaysAudio(codec) {
 }
 
 function attachAudioTracks(video, t, data, ctx) {
-  if (!data.stream_url || !window.MediaSource) return;
+  if (!data.stream_url || !MSE_CLASS) return;
+  const blocked = !nativeContainerOk(data.name); // Safari + MKV: doar prin conversie
   const ccBtn = $("#c-cc");
   if (!ccBtn) return;
   const btn = document.createElement("button");
@@ -168,15 +182,15 @@ function attachAudioTracks(video, t, data, ctx) {
 
   const select = (idx, { save = true } = {}) => {
     const tr = info.tracks[idx];
-    if (!tr || (idx === current && (mse || tr.native))) return;
-    const pos = video.currentTime || 0;
+    if (!tr || (idx === current && (mse || (tr.native && !blocked)))) return;
+    const pos = video.currentTime || +video.dataset.seekTo || 0;
     video.closest(".cin-video")?.querySelector("#video-error")?.classList.add("hidden");
     const wasPaused = video.paused && pos > 0;
     if (mse) {
       mse.destroy();
       mse = null;
     }
-    if (idx === 0 && tr.native) {
+    if (idx === 0 && tr.native && !blocked) {
       // prima pistă o redă browserul direct, fără conversie
       video.src = data.stream_url;
       video.addEventListener("loadedmetadata", () => (video.currentTime = pos), { once: true });
@@ -187,7 +201,7 @@ function attachAudioTracks(video, t, data, ctx) {
     current = idx;
     if (save) remember(tr);
     render();
-    toast(`Audio: ${audioLabel(tr)}`);
+    if (save) toast(`Audio: ${audioLabel(tr)}`); // alegerile automate nu mai anunță nimic
   };
 
   const render = () => {
@@ -202,7 +216,7 @@ function attachAudioTracks(video, t, data, ctx) {
       });
       list.appendChild(b);
     });
-    note.textContent = current !== 0 || !info.tracks[0].native ? "convertită pe server în AAC stereo" : "";
+    note.textContent = current !== 0 || !info.tracks[0].native || blocked ? "convertită pe server în AAC stereo" : "";
   };
 
   btn.addEventListener("click", (ev) => {
@@ -224,14 +238,31 @@ function attachAudioTracks(video, t, data, ctx) {
       if (!ctx.alive || !r.tracks || !r.tracks.length) return;
       r.tracks.forEach((tr) => (tr.native = tr.native || browserPlaysAudio(tr.codec)));
       info = r;
-      if (!info.mse_codecs) return; // HEVC & co.: browserul redă oricum doar prima pistă
+      const pref = recalled();
+      const match = pref && info.tracks.find((x) => x.lang === pref.lang && x.title === pref.title);
+      if (!info.mse_codecs) {
+        // HEVC & co.: browserul redă oricum doar prima pistă; pe Safari MKV-ul nu merge deloc
+        if (blocked) {
+          $("#buffer")?.classList.add("hidden");
+          const box = video.closest(".cin-video")?.querySelector("#video-error");
+          if (box) {
+            box.textContent = "Safari (iPhone/iPad) nu poate reda acest fișier: MKV cu video HEVC sau 10-bit, pe care serverul nu-l poate converti. Alege din „Versiuni” o variantă „Mobil” sau H.264.";
+            box.classList.remove("hidden");
+          }
+        }
+        return;
+      }
       const first = info.tracks[0];
+      if (blocked) {
+        // Safari + MKV: pornim direct prin conversie, pe pista ținută minte sau pe prima
+        if (info.tracks.length > 1) btn.classList.remove("hidden");
+        select(match ? match.index : 0, { save: false });
+        return;
+      }
       if (info.tracks.length < 2 && first.native) return; // o singură pistă, deja redată
       btn.classList.remove("hidden");
       render();
       // pista aleasă data trecută la acest titlu (aceeași limbă + titlu), apoi codec nesuportat
-      const pref = recalled();
-      const match = pref && info.tracks.find((x) => x.lang === pref.lang && x.title === pref.title);
       if (match && match.index !== 0) select(match.index, { save: false });
       else if (!first.native) select(0, { save: false }); // DTS & co.: altfel n-ar avea sunet
     })
@@ -242,6 +273,7 @@ function attachAudioTracks(video, t, data, ctx) {
     loaded = true;
     loadTracks();
   };
+  if (blocked) return once(); // n-avem redare directă de așteptat: citim pistele imediat
   video.addEventListener("playing", once, { once: true });
   // fișier pe care browserul nu-l poate reda deloc (ex. doar DTS): citim pistele oricum
   video.addEventListener("error", once, { once: true });
