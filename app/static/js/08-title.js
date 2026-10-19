@@ -194,13 +194,22 @@ function renderModal(t, opts = {}) {
     try {
       const hist = await api(`/api/title/${t.id}/history`);
       if (ds !== detailSeq) return;
-      // ultima poziție neterminată (un film/episod văzut până la capăt nu mai e „de continuat”)
-      const last = hist.find(isUnfinished);
+      // serial: unde ești acum (ultimul episod pornit) sau, dacă l-ai terminat, episodul următor;
+      // film: ultima poziție neterminată (un film văzut până la capăt nu mai e „de continuat”)
+      const latest = hist[0];
+      const next = isSeries && latest && latest.episode != null && isFinishedEp(latest)
+        ? nextEpisodeOf(t.seasons, latest.season, latest.episode)
+        : null;
+      const last = next
+        ? { ...next, position_seconds: 0 }
+        : isSeries && latest && isEpisodeInProgress(latest) ? latest : hist.find(isUnfinished);
       if (!last) return;
       const chip = modalBody.querySelector("#resume-chip");
       if (!chip) return;
       const label = last.season ? `S${last.season}E${last.episode} · ` : "";
-      chip.innerHTML = `⏱ Ultima redare: ${label}${fmtTime(last.position_seconds)}
+      chip.innerHTML = next
+        ? `▶ Urmează: S${next.season}E${next.episode} <button class="btn small">Pornește</button>`
+        : `⏱ Ultima redare: ${label}${fmtTime(last.position_seconds)}
         <button class="btn small">Continuă</button>`;
       chip.querySelector("button").addEventListener("click", () => {
         if (isSeries && last.season) {

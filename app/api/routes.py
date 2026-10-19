@@ -852,6 +852,22 @@ async def watchlist_remove(title_id: int, db: AsyncSession = Depends(get_session
 
 # ----------------- istoric -----------------
 
+def next_episode(seasons: list[dict], season: int | None, episode: int | None) -> dict | None:
+    """Episodul de după (season, episode), din sezoanele TMDB [{season, episodes}];
+    trece la sezonul următor; sezonul 0 (speciale) nu contează; None după ultimul."""
+    if season is None or episode is None:
+        return None
+    counts = {int(s["season"]): int(s.get("episodes") or 0) for s in seasons or [] if s.get("season")}
+    if episode < counts.get(season, 0):
+        return {"season": season, "episode": episode + 1}
+    later = sorted(s for s, n in counts.items() if s > season and n > 0)
+    return {"season": later[0], "episode": 1} if later else None
+
+
+def _finished(h: HistoryItem) -> bool:
+    return bool(h.duration_seconds) and (h.duration_seconds - (h.position_seconds or 0)) <= 60
+
+
 @router.get("/history")
 async def history_list(db: AsyncSession = Depends(get_session)) -> list[dict[str, Any]]:
     # istoricul salveaza o linie la fiecare pozitie — grupam: doar ultima per titlu
@@ -867,6 +883,12 @@ async def history_list(db: AsyncSession = Depends(get_session)) -> list[dict[str
             continue
         seen.add(h.title_id)
         items.append(h)
+    def seasons_of(t: Title) -> list[dict]:
+        try:
+            return (json.loads(t.extra) if t.extra else {}).get("seasons") or []
+        except (TypeError, ValueError):
+            return []
+
     return [
         {
             "title": _title_to_dict(h.title),
@@ -875,6 +897,8 @@ async def history_list(db: AsyncSession = Depends(get_session)) -> list[dict[str
             "position_seconds": h.position_seconds,
             "duration_seconds": h.duration_seconds,
             "updated_at": h.updated_at.isoformat(),
+            # episod terminat: „Continuă” propune episodul următor (dacă mai există)
+            "next": next_episode(seasons_of(h.title), h.season, h.episode) if _finished(h) else None,
         }
         for h in items
     ]

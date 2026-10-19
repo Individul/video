@@ -217,6 +217,7 @@ function cardEl(title, opts = {}) {
 
 /* „S2 · E5 · 23 min rămase” pentru un rând de istoric */
 function historyLabel(h) {
+  if (h.next) return `Urmează: S${h.next.season} · E${h.next.episode}`; // episodul de acum e terminat
   const ep = h.season ? `S${h.season} · E${h.episode} · ` : "";
   const left = Math.max(0, (h.duration_seconds || 0) - (h.position_seconds || 0));
   const mins = Math.round(left / 60);
@@ -227,10 +228,19 @@ const isUnfinished = (h) =>
   h.position_seconds > 30 && (h.duration_seconds == null || h.duration_seconds - h.position_seconds > 60);
 // la seriale, episodul abia pornit e „unde ești” (ai trecut la următorul): apare de la primele
 // secunde salvate; la filme rămâne pragul de 30 s (filme deschise din greșeală)
+const isEpisodeInProgress = (h) =>
+  h.episode != null && h.position_seconds >= 5 && !!h.duration_seconds && h.duration_seconds - h.position_seconds > 60;
+// + episod terminat cu un următor (serverul îl pune în h.next): „Urmează: S2 · E13”
 const isContinuable = (h) =>
-  !!h.title &&
-  !!h.duration_seconds &&
-  (isUnfinished(h) || (h.episode != null && h.position_seconds >= 5 && h.duration_seconds - h.position_seconds > 60));
+  !!h.title && (!!h.next || (!!h.duration_seconds && (isUnfinished(h) || isEpisodeInProgress(h))));
+const isFinishedEp = (h) => !!h.duration_seconds && h.duration_seconds - h.position_seconds <= 60;
+/* episodul de după (s, e), din sezoanele TMDB [{season, episodes}]; sezonul 0 (speciale) nu contează */
+function nextEpisodeOf(seasons, s, e) {
+  const counts = new Map((seasons || []).filter((x) => x.season).map((x) => [+x.season, +x.episodes || 0]));
+  if (e < (counts.get(s) || 0)) return { season: s, episode: e + 1 };
+  const later = [...counts].filter(([n, c]) => n > s && c > 0).map(([n]) => n).sort((a, b) => a - b);
+  return later.length ? { season: later[0], episode: 1 } : null;
+}
 
 function rowEl(titleText, titles, opts = {}) {
   const row = document.createElement("div");
