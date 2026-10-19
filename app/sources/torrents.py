@@ -329,8 +329,19 @@ def _parse_torznab(xml_bytes: bytes) -> list[dict]:
             "seeds": int(seeds) if seeds and seeds.isdigit() else None,
             "source": "jackett",
             "indexer": attrs.get("jackettindexer") or attrs.get("jackettindexers") or attrs.get("indexer") or None,
+            "published": _iso_date(item.findtext("pubDate")),
         })
     return out
+
+
+def _iso_date(rfc822: str | None) -> str | None:
+    """„Sat, 17 Oct 2026 22:00:00 +0300” -> „2026-10-17T22:00:00+03:00” (pentru sortare)."""
+    from email.utils import parsedate_to_datetime
+
+    try:
+        return parsedate_to_datetime(rfc822).isoformat() if rfc822 else None
+    except (TypeError, ValueError):
+        return None
 
 
 _TORZNAB_INDEXER_CACHE: list[tuple[str, str]] = []

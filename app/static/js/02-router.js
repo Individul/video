@@ -23,6 +23,14 @@ function parseRoute() {
   if (seg[0] === "calendar") return { view: "calendar" };
   if (seg[0] === "sport") return { view: "sport" };
   if (seg[0] === "live") return { view: "live" };
+  if (seg[0] === "library") return { view: "library" };
+  if (seg[0] === "music" || seg[0] === "audiobooks") {
+    let q = seg.slice(1).join("/");
+    try {
+      q = decodeURIComponent(q);
+    } catch (_) {}
+    return { view: seg[0], q };
+  }
   if (seg[0] === "torrents") {
     let q = seg.slice(1).join("/");
     try {
@@ -187,6 +195,8 @@ async function render() {
   if (r.view === "calendar") return loadCalendar();
   if (r.view === "sport") return loadSport();
   if (r.view === "live") return loadLive();
+  if (r.view === "music" || r.view === "audiobooks") return loadLibraryCatalog(r.view, r.q);
+  if (r.view === "library") return loadLibrary();
   if (r.view === "torrents") return loadTorrentSearch(r.q);
   return loadHome();
 }

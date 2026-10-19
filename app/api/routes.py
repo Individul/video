@@ -400,6 +400,68 @@ async def sport_feed(q: str | None = Query(None, max_length=100)) -> dict[str, A
         raise HTTPException(status_code=502, detail=f"RGFootball indisponibil: {e}") from e
 
 
+# ----------------- Bibliotecă: muzică și cărți audio -----------------
+
+def _library_err(e: Exception) -> HTTPException:
+    if isinstance(e, SourceError):
+        msg = str(e)
+        bad = any(w in msg for w in ("necunoscută", "invalid", "nepermis"))
+        return HTTPException(status_code=400 if bad else 502, detail=msg)
+    return HTTPException(status_code=502, detail=f"Bibliotecă indisponibilă: {e}")
+
+
+class LibrarySource(BaseModel):
+    magnet: str | None = Field(None, max_length=4000)
+    torrent_url: str | None = Field(None, max_length=4000)
+
+
+class LibraryAddBody(BaseModel):
+    kind: str = Field(max_length=20)
+    source: LibrarySource
+
+
+@router.get("/library/browse/{kind}")
+async def library_browse(kind: str, q: str | None = Query(None, max_length=100)) -> dict[str, Any]:
+    """Catalog: noutăți din categoria Torznab (fără `q`) sau căutare în ea."""
+    from app.sources import library
+
+    try:
+        return {"results": await asyncio.to_thread(library.browse, kind, q)}
+    except Exception as e:  # noqa: BLE001
+        raise _library_err(e) from e
+
+
+@router.post("/library/add")
+async def library_add(body: LibraryAddBody) -> dict[str, Any]:
+    from app.sources import library
+
+    try:
+        return await asyncio.to_thread(library.add, body.kind, body.source.model_dump())
+    except Exception as e:  # noqa: BLE001
+        raise _library_err(e) from e
+
+
+@router.get("/library")
+async def library_items() -> dict[str, Any]:
+    from app.sources import library
+
+    try:
+        return await asyncio.to_thread(library.items)
+    except Exception as e:  # noqa: BLE001
+        raise _library_err(e) from e
+
+
+@router.delete("/library/{torrent_hash}")
+async def library_remove(torrent_hash: str) -> dict[str, str]:
+    from app.sources import library
+
+    try:
+        await asyncio.to_thread(library.remove, torrent_hash.lower())
+    except Exception as e:  # noqa: BLE001
+        raise _library_err(e) from e
+    return {"ok": "true"}
+
+
 @router.get("/torrents/search")
 async def torrents_free_search(q: str = Query(min_length=2, max_length=200)) -> dict[str, Any]:
     """Căutare liberă în toate trackerele (pagina „Torrente”), fără catalog."""
