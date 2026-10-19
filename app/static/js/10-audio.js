@@ -118,6 +118,21 @@ function mseAudioPlayer(video, { url, track, codecs, duration, startAt }) {
     load(t);
   };
   video.addEventListener("seeking", onSeeking);
+  // iPhone (ManagedMediaSource) aruncă singur din memorie bucăți deja încărcate; dacă player-ul
+  // stă > 2 s la o poziție fără date, repornim conversia de acolo (altfel ar rămâne în buffer)
+  let stallTimer = null;
+  const onWaiting = () => {
+    clearTimeout(stallTimer);
+    stallTimer = setTimeout(() => {
+      const t = video.currentTime;
+      if (destroyed || buffered(t) || video.paused) return;
+      console.warn(`audio: fără date la ${Math.round(t)}s, reîncarc de acolo`);
+      load(t);
+    }, 2000);
+  };
+  const onPlaying = () => clearTimeout(stallTimer);
+  video.addEventListener("waiting", onWaiting);
+  video.addEventListener("playing", onPlaying);
   video.src = objUrl;
   load(startAt);
   video.addEventListener("loadedmetadata", () => (video.currentTime = startAt), { once: true });
@@ -127,6 +142,9 @@ function mseAudioPlayer(video, { url, track, codecs, duration, startAt }) {
       gen++;
       if (ctrl) ctrl.abort();
       video.removeEventListener("seeking", onSeeking);
+      video.removeEventListener("waiting", onWaiting);
+      video.removeEventListener("playing", onPlaying);
+      clearTimeout(stallTimer);
       URL.revokeObjectURL(objUrl);
       fetch("/api/audio/stream", { method: "DELETE", keepalive: true }).catch(() => {});
     },
