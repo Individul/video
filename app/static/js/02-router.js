@@ -33,6 +33,7 @@ function parseRoute() {
       }
     };
     if (seg[1] === "genre") return { view: "audiobooks", genre: seg[2] || "" };
+    if (seg[1] === "tag") return { view: "audiobooks", tag: dec(seg.slice(2).join("/")) };
     if (seg[1] === "search") return { view: "audiobooks", q: dec(seg.slice(2).join("/")) };
     return { view: "audiobooks" };
   }

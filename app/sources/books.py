@@ -257,6 +257,11 @@ def popular(limit: int = 60) -> list[dict]:
     """„Populare acum”: trackerele nu au clasament și nici paginare (doar ultimele ~50 pe flux),
     așa că strângem fluxurile tuturor genurilor + noutățile (genurile lente ajung luni în urmă)
     și ordonăm după seederi — câți oameni o împart acum. Aceeași carte apare o singură dată."""
+    return sorted(_all_feeds().values(), key=lambda b: b["seeds"], reverse=True)[:limit]
+
+
+def _all_feeds() -> dict[str, dict]:
+    """Toate cărțile din fluxurile cunoscute (noutăți + fiecare gen), o dată fiecare."""
     slugs = [None] + [g for g, _, _ in GENRES]
     with ThreadPoolExecutor(max_workers=4) as pool:
         feeds = list(pool.map(lambda g: _try_indexer(lambda x: browse(x), g), slugs))
@@ -266,7 +271,16 @@ def popular(limit: int = 60) -> list[dict]:
             have = merged.get(b["key"])
             if not have or b["seeds"] > have["seeds"]:
                 merged[b["key"]] = b
-    return sorted(merged.values(), key=lambda b: b["seeds"], reverse=True)[:limit]
+    return merged
+
+
+def tagged(name: str, limit: int = 200) -> list[dict]:
+    """Cărțile din catalog cu subgenul sau tagul `name` (de pe LitRes), după seederi."""
+    want = (name or "").strip().lower()
+    if not want:
+        return []
+    out = [b for b in _all_feeds().values() if want in (x.lower() for x in labels(b["key"]))]
+    return sorted(out, key=lambda b: b["seeds"], reverse=True)[:limit]
 
 
 def browse(genre: str | None = None, q: str | None = None) -> list[dict]:
@@ -407,7 +421,68 @@ def _apple_find(author: str | None, title: str) -> dict | None:
     return None
 
 
-_META_VERSION = 2  # lipsurile notate de versiunile vechi se reîncearcă
+_META_VERSION = 2
+# tagurile de magazin / școală ale LitRes, care nu spun nimic despre carte
+_NOT_A_TAG = re.compile(r"(?i)литрес|только на|\bкласс\b|издани|аудиокниг|^\d|бестселлер|скидк|подписк")
+
+
+def labels(key: str) -> list[str]:
+    """Subgenurile + tagurile cunoscute ale cărții (goale până le aduce îmbogățirea din fundal)."""
+    m = _meta_store().get(key) or {}
+    return list(dict.fromkeys((m.get("genres") or []) + (m.get("tags") or [])))
+
+
+def with_labels(books: list[dict]) -> list[dict]:
+    """Copii ale cărților cu `genres` și `tags` (din cache) — pentru filtrele din interfață."""
+    store = _meta_store()
+    out = []
+    for b in books:
+        m = store.get(b["key"]) or {}
+        out.append({**b, "genres": m.get("genres") or [], "tags": m.get("tags") or []})
+    return out
+
+
+# ---------- îmbogățire în fundal: descrierea, subgenurile și tagurile fiecărei cărți din catalog ----------
+
+_enrich_lock = threading.Lock()
+_enrich_queue: list[dict] = []
+_enrich_seen: set[str] = set()
+_enrich_running = False
+
+
+def enqueue_enrich(books: list[dict]) -> None:
+    """Cere pe rând (un fir, ~2 cereri/s spre LitRes) detaliile cărților încă necunoscute.
+    Fiecare carte o singură dată pe pornire; rezultatul rămâne în books_meta.json."""
+    global _enrich_running
+    store = _meta_store()
+    with _enrich_lock:
+        for b in books:
+            k = b["key"]
+            m = store.get(k)
+            done = m and (m.get("miss") or "tags" in m or "litres_id" not in m)
+            if k in _enrich_seen or done:
+                continue
+            _enrich_seen.add(k)
+            _enrich_queue.append(b)
+        if _enrich_queue and not _enrich_running:
+            _enrich_running = True
+            threading.Thread(target=_enrich_worker, name="books-enrich", daemon=True).start()
+
+
+def _enrich_worker() -> None:
+    global _enrich_running
+    while True:
+        with _enrich_lock:
+            if not _enrich_queue:
+                _enrich_running = False
+                return
+            b = _enrich_queue.pop(0)
+        try:
+            meta(b.get("author"), b["title"], True, b.get("author_alt"), b.get("title_alt"))
+        except Exception:  # noqa: BLE001
+            pass
+        time.sleep(0.5)
+  # lipsurile notate de versiunile vechi se reîncearcă
 
 
 def meta(author: str | None, title: str, full: bool = False,
@@ -421,7 +496,7 @@ def meta(author: str | None, title: str, full: bool = False,
         if m.get("v") == _META_VERSION and time.time() - m.get("ts", 0) < _META_MISS_TTL:
             return None
         m = None
-    if m and (not full or "description" in m or "litres_id" not in m):
+    if m and (not full or "tags" in m or "litres_id" not in m):
         return m
     try:
         if not m:
@@ -442,6 +517,9 @@ def meta(author: str | None, title: str, full: bool = False,
             rating = d.get("livelib_rated_avg") or (d.get("rating") or {}).get("rated_avg")
             m["rating"] = round(float(rating), 1) if rating else None
             m["written"] = (d.get("date_written_at") or "")[:4] or None
+            names = {_norm(x.get("full_name")) for x in d.get("persons") or []}
+            m["tags"] = [t["name"] for t in d.get("tags") or [] if t.get("name")
+                         and not _NOT_A_TAG.search(t["name"]) and _norm(t["name"]) not in names][:10]
     except Exception:  # noqa: BLE001 — sursă indisponibilă acum: fără copertă, se reîncearcă data viitoare
         return m
     with _meta_lock:

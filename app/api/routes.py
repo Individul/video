@@ -456,15 +456,20 @@ async def books_genres() -> list[dict[str, str]]:
 
 @router.get("/books/browse")
 async def books_browse(
-    genre: str | None = Query(None, max_length=30), q: str | None = Query(None, max_length=100)
+    genre: str | None = Query(None, max_length=30),
+    q: str | None = Query(None, max_length=100),
+    tag: str | None = Query(None, max_length=100),
 ) -> dict[str, Any]:
-    """Cărți (grupate, cu versiuni): noutăți, un gen sau căutare."""
+    """Cărți (grupate, cu versiuni): noutăți, un gen, populare, un subgen/tag (LitRes) sau căutare.
+    Fiecare carte vine cu subgenurile și tagurile știute; restul se aduc în fundal."""
     from app.sources import books
 
     try:
-        return {"books": await asyncio.to_thread(books.browse, genre, q)}
+        found = await asyncio.to_thread(books.tagged, tag) if tag else await asyncio.to_thread(books.browse, genre, q)
     except Exception as e:  # noqa: BLE001
         raise _books_err(e) from e
+    books.enqueue_enrich(found)
+    return {"books": books.with_labels(found)}
 
 
 @router.get("/books/book")

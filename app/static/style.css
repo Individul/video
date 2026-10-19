@@ -1553,7 +1553,9 @@ body.cinema-open { overflow: hidden; }
 .bk-facts { display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; color: var(--sub); font-size: 0.88rem; margin: 0.8rem 0; }
 .bk-rating { color: var(--success-text); font-weight: 700; }
 .bk-genres { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 1rem; }
-.bk-genres span { background: rgba(var(--ink), 0.08); border-radius: 999px; padding: 3px 10px; font-size: 0.75rem; color: var(--text-2); }
+.bk-genres span, .bk-genres a { background: rgba(var(--ink), 0.08); border-radius: 999px; padding: 3px 10px; font-size: 0.75rem; color: var(--text-2); text-decoration: none; }
+.bk-genres a:hover { background: rgba(var(--ink), 0.16); color: var(--text); }
+.bk-genres a.tag { background: none; border: 1px solid rgba(var(--ink), 0.14); }
 .bk-desc { color: var(--text-2); font-size: 0.92rem; line-height: 1.55; max-width: 60rem; }
 .bk-desc p { margin: 0 0 0.6rem; }
 .bk-desc.clamp { max-height: 190px; overflow: hidden; -webkit-mask-image: linear-gradient(180deg, #000 70%, transparent); mask-image: linear-gradient(180deg, #000 70%, transparent); }
@@ -1672,3 +1674,16 @@ body.bk-open main#content { padding-bottom: 7rem; }
 .bp-vol input::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%; background: var(--text); }
 .bp-vol input::-moz-range-thumb { width: 12px; height: 12px; border: none; border-radius: 50%; background: var(--text); }
 @media (max-width: 760px) { .bp-vol input { display: none; } }
+
+/* filtre pe subgen / etichete (LitRes) */
+.bk-filters { margin: -0.4rem 0 1.2rem; }
+.bk-filters .q-filter { margin: 0 0 0.5rem; flex-wrap: wrap; }
+.bk-filters .q-filter button small { opacity: 0.6; margin-left: 2px; }
+.bk-tags button { background: none; }
+.bk-flabel { font-size: 0.72rem; font-weight: 700; color: var(--sub); text-transform: uppercase; letter-spacing: 0.05em; align-self: center; margin-right: 4px; }
+.bk-explore { margin: -0.6rem 0 1.4rem; flex-wrap: wrap; }
+.bk-explore a {
+  text-decoration: none; color: var(--text-2); font-size: 0.82rem;
+  border: 1px solid rgba(var(--ink), 0.14); border-radius: 999px; padding: 4px 12px;
+}
+.bk-explore a:hover { color: var(--text); background: rgba(var(--ink), 0.08); }

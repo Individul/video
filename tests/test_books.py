@@ -82,7 +82,10 @@ def test_meta_cached_and_misses_remembered(monkeypatch, tmp_path):
             return [{"instance": {"id": 7, "title": "Регистрация", "persons": [
                 {"full_name": "Дмитрий Глуховский", "role": "author"}, {"full_name": "Дмитрий Оргин", "role": "reader"}]}}]
         return {"html_annotation": "<p>Роман &laquo;о&raquo;</p><p>второй</p>", "genres": [{"name": "антиутопии"}],
-                "livelib_rated_avg": 4.26, "date_written_at": "2026-02-01"}
+                "livelib_rated_avg": 4.26, "date_written_at": "2026-02-01",
+                "persons": [{"full_name": "Дмитрий Глуховский"}],
+                "tags": [{"name": "Литрес Авторы"}, {"name": "сильный герой"}, {"name": "11 класс"},
+                         {"name": "Дмитрий Глуховский"}, {"name": "только на Литрес"}, {"name": "антиутопия"}]}
 
     monkeypatch.setattr(books, "_litres_get", fake)
     m = books.meta("Дмитрий Глуховский", "Регистрация")
@@ -239,3 +242,29 @@ def test_popular_merges_all_feeds_by_seeds(monkeypatch):
     out = books.popular(limit=3)
     assert [(b["key"], b["seeds"]) for b in out] == [("b", 50), ("c", 20), ("a", 9)]
     assert books.genres()[0] == {"slug": "popular", "name": "Populare acum"}
+
+
+def test_labels_tagged_and_background_enrich(monkeypatch, tmp_path):
+    monkeypatch.setattr(books, "_META_FILE", tmp_path / "m.json")
+    ka, kb = book_key("A B", "Unu"), book_key("C D", "Doi")
+    monkeypatch.setattr(books, "_meta", {ka: {"litres_id": 1, "genres": ["боевое фэнтези"], "tags": ["попаданцы"]}})
+    feed = {ka: {"key": ka, "author": "A B", "title": "Unu", "seeds": 3},
+            kb: {"key": kb, "author": "C D", "title": "Doi", "seeds": 9}}
+    monkeypatch.setattr(books, "_all_feeds", lambda: feed)
+    assert [b["key"] for b in books.tagged("Попаданцы")] == [ka]
+    assert books.tagged("боевое фэнтези")[0]["key"] == ka and books.tagged("") == []
+    lab = books.with_labels(list(feed.values()))
+    assert lab[0]["tags"] == ["попаданцы"] and lab[1]["genres"] == [] and "tags" not in feed[ka]
+
+    done = []
+    monkeypatch.setattr(books, "meta", lambda a, t, full=False, aa=None, at=None: done.append(t))
+    monkeypatch.setattr(books.time, "sleep", lambda s: None)
+    books._enrich_seen.clear()
+    books.enqueue_enrich(list(feed.values()))
+    books.enqueue_enrich(list(feed.values()))  # a doua oară nu mai cere nimic
+    import threading
+
+    for th in threading.enumerate():
+        if th.name == "books-enrich":
+            th.join(5)
+    assert done == ["Doi"]  # A are deja tagurile; B nu e știută -> se cere o singură dată

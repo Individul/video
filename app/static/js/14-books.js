@@ -146,6 +146,7 @@ function bkSearchForm(q) {
 async function loadAudiobooks(r) {
   if (r.q) return loadBookGrid({ q: r.q });
   if (r.genre) return loadBookGrid({ genre: r.genre });
+  if (r.tag) return loadBookGrid({ tag: r.tag });
   const seq = viewSeq;
   const wrap = document.createElement("div");
   wrap.className = "grid-wrap bk-page";
@@ -187,6 +188,7 @@ async function loadAudiobooks(r) {
       const res = await api(`/api/books/browse${job.slug ? `?genre=${job.slug}` : ""}`);
       if (seq !== viewSeq) return;
       if (res.books.length) job.row.fill(res.books.slice(0, 30));
+      if (job.slug === "popular") bkExplore(wrap, res.books);
       else job.row.remove();
     } catch (_) {
       job.row.remove();
@@ -198,37 +200,87 @@ async function loadAudiobooks(r) {
   next();
 }
 
-async function loadBookGrid({ q, genre }) {
+const tagHash = (t) => `#/audiobooks/tag/${encodeURIComponent(t)}`;
+
+/* numără subgenurile și tagurile cărților (de pe LitRes) -> [[eticheta, câte]] */
+function bkFacets(list, field) {
+  const counts = new Map();
+  list.forEach((b) => (b[field] || []).forEach((t) => counts.set(t, (counts.get(t) || 0) + 1)));
+  return [...counts].sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0]));
+}
+
+/* „Explorează”: subgenurile și etichetele cele mai dese printre cărțile populare -> pagina lor */
+function bkExplore(wrap, books) {
+  const top = [...bkFacets(books, "genres").slice(0, 10), ...bkFacets(books, "tags").filter(([, n]) => n >= 2).slice(0, 10)];
+  if (top.length < 4) return;
+  const box = document.createElement("div");
+  box.className = "q-filter bk-explore";
+  box.innerHTML = `<span class="bk-flabel">Explorează</span>` + top.map(([t]) => `<a href="${tagHash(t)}">${esc(t)}</a>`).join("");
+  wrap.querySelector(".ts-form").after(box);
+}
+
+async function loadBookGrid({ q, genre, tag }) {
   const seq = viewSeq;
   const gname = genre ? ((await api("/api/books/genres").catch(() => [])).find((g) => g.slug === genre) || {}).name : null;
   if (seq !== viewSeq) return;
   const wrap = document.createElement("div");
   wrap.className = "grid-wrap bk-page";
-  wrap.innerHTML = `<div class="view-title"><a href="#/audiobooks" class="bk-crumb">Cărți audio</a> › ${esc(q ? `„${q}”` : gname || "Gen")}</div>`;
+  const label = q ? `„${q}”` : tag ? `#${tag}` : gname || "Gen";
+  wrap.innerHTML = `<div class="view-title"><a href="#/audiobooks" class="bk-crumb">Cărți audio</a> › ${esc(label)}</div>`;
   wrap.appendChild(bkSearchForm(q));
   const box = document.createElement("div");
   box.innerHTML = `<div class="status">${q ? "Caut pe trackere…" : "Se încarcă…"}</div>`;
   wrap.appendChild(box);
   content.innerHTML = "";
   content.appendChild(wrap);
-  if (q) document.title = `${q} — Cărți audio — Cinema`;
+  if (q || tag) document.title = `${q || tag} — Cărți audio — Cinema`;
   let res;
   try {
-    res = await api(`/api/books/browse?${q ? `q=${encodeURIComponent(q)}` : `genre=${encodeURIComponent(genre)}`}`);
+    const qs = q ? `q=${encodeURIComponent(q)}` : tag ? `tag=${encodeURIComponent(tag)}` : `genre=${encodeURIComponent(genre)}`;
+    res = await api(`/api/books/browse?${qs}`);
   } catch (err) {
     if (seq === viewSeq) box.innerHTML = `<div class="status error">Eroare: ${esc(err.message)}</div>`;
     return;
   }
   if (seq !== viewSeq) return;
   if (!res.books.length) {
-    box.innerHTML = `<div class="status">${q ? `Nimic găsit pentru „${esc(q)}”.` : "Nimic aici acum."}</div>`;
+    box.innerHTML = `<div class="status">${q ? `Nimic găsit pentru „${esc(q)}”.`
+      : tag ? "Nicio carte cu eticheta asta încă — etichetele se adună treptat de pe LitRes." : "Nimic aici acum."}</div>`;
     return;
   }
+  const books = res.books;
+  const known = books.filter((b) => b.genres.length || b.tags.length).length;
+  const sub = bkFacets(books, "genres").filter(([t]) => t.toLowerCase() !== (tag || "").toLowerCase()).slice(0, 14);
+  const tags = bkFacets(books, "tags").filter(([t, n]) => n >= 2 && t.toLowerCase() !== (tag || "").toLowerCase()).slice(0, 24);
+  let pickSub = null, pickTag = null;
+  const filters = document.createElement("div");
+  filters.className = "bk-filters";
+  const chips = (list, kind) => list.map(([t, n]) => `<button data-k="${kind}" data-t="${esc(t)}">${kind === "tag" ? "#" : ""}${esc(t)} <small>${n}</small></button>`).join("");
+  filters.innerHTML =
+    (sub.length ? `<div class="q-filter bk-sub"><span class="bk-flabel">Subgen</span>${chips(sub, "sub")}</div>` : "") +
+    (tags.length ? `<div class="q-filter bk-tags"><span class="bk-flabel">Etichete</span>${chips(tags, "tag")}</div>` : "") +
+    (known < books.length ? `<div class="ts-note">Etichete știute pentru ${known} din ${books.length} cărți — restul se adună acum de pe LitRes (reîncarcă peste câteva minute).</div>` : "");
   const grid = document.createElement("div");
   grid.className = "grid bk-grid";
-  res.books.forEach((b) => grid.appendChild(bookCard(b, { sub: [b.author, b.versions.length > 1 ? `${b.versions.length} versiuni` : ""].filter(Boolean).join(" · ") })));
+  const draw = () => {
+    grid.innerHTML = "";
+    const shown = books.filter((b) => (!pickSub || b.genres.includes(pickSub)) && (!pickTag || b.tags.includes(pickTag)));
+    if (!shown.length) grid.innerHTML = `<div class="status">Nicio carte cu ambele filtre.</div>`;
+    shown.forEach((b) => grid.appendChild(bookCard(b, { sub: [b.author, b.versions.length > 1 ? `${b.versions.length} versiuni` : ""].filter(Boolean).join(" · ") })));
+    filters.querySelectorAll("button").forEach((x) =>
+      x.classList.toggle("on", (x.dataset.k === "sub" ? pickSub : pickTag) === x.dataset.t));
+  };
+  filters.addEventListener("click", (e) => {
+    const x = e.target.closest("button");
+    if (!x) return;
+    if (x.dataset.k === "sub") pickSub = pickSub === x.dataset.t ? null : x.dataset.t;
+    else pickTag = pickTag === x.dataset.t ? null : x.dataset.t;
+    draw();
+  });
   box.innerHTML = "";
+  if (sub.length || tags.length || known < books.length) box.appendChild(filters);
   box.appendChild(grid);
+  draw();
 }
 
 /* ================= pagina cărții ================= */
@@ -269,7 +321,7 @@ async function loadBook(r) {
           ${b.lang ? `<span>${esc(b.lang)}</span>` : ""}
           ${readers.length ? `<span>🎙 ${esc(readers.slice(0, 3).join(", "))}${readers.length > 3 ? " …" : ""}</span>` : ""}
         </div>
-        ${m.genres && m.genres.length ? `<div class="bk-genres">${m.genres.map((g) => `<span>${esc(g)}</span>`).join("")}</div>` : ""}
+        ${(m.genres && m.genres.length) || (m.tags && m.tags.length) ? `<div class="bk-genres">${(m.genres || []).map((g) => `<a href="${tagHash(g)}">${esc(g)}</a>`).join("")}${(m.tags || []).map((g) => `<a class="tag" href="${tagHash(g)}">#${esc(g)}</a>`).join("")}</div>` : ""}
         <div id="bk-owned"></div>
         ${m.description ? `<div class="bk-desc">${m.description.split("\n").map((p) => `<p>${esc(p)}</p>`).join("")}</div>` : ""}
       </div>
