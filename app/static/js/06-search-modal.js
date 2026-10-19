@@ -5,15 +5,74 @@
 /* ================= SEARCH ================= */
 $("#search-close").addEventListener("click", closeSearch);
 
+/* căutări recente (în browser) + „Populare acum” — ce vezi până scrii ceva */
+const RECENT_KEY = "cinema-recent-searches";
+function loadRecent() {
+  try {
+    return JSON.parse(localStorage.getItem(RECENT_KEY)) || [];
+  } catch (_) {
+    return [];
+  }
+}
+function rememberSearch(q) {
+  q = (q || "").trim();
+  if (q.length < 2) return;
+  const list = [q, ...loadRecent().filter((x) => x.toLowerCase() !== q.toLowerCase())].slice(0, 8);
+  try {
+    localStorage.setItem(RECENT_KEY, JSON.stringify(list));
+  } catch (_) {}
+}
+let searchTrending = null; // o singură cerere per sesiune
+async function renderSearchEmpty() {
+  const box = $("#search-empty");
+  box.classList.remove("hidden");
+  const recent = loadRecent();
+  box.innerHTML = `
+    ${recent.length ? `<div class="se-head">Căutări recente <button class="se-clear" type="button">Șterge</button></div>
+      <div class="se-chips">${recent.map((q) => `<button type="button" data-q="${esc(q)}">${svg(I.history || "M13 3a9 9 0 0 0-9 9H1l4 4 4-4H6a7 7 0 1 1 2 5l-1.4 1.4A9 9 0 1 0 13 3z", 15)}${esc(q)}</button>`).join("")}</div>` : ""}
+    <div class="se-head">Populare acum</div>
+    <div class="search-results" id="se-trending"><div class="status">Se încarcă…</div></div>`;
+  box.querySelectorAll(".se-chips button").forEach((b) =>
+    b.addEventListener("click", () => {
+      const inp = $("#search-input");
+      inp.value = b.dataset.q;
+      inp.dispatchEvent(new Event("input"));
+      inp.focus();
+    })
+  );
+  box.querySelector(".se-clear")?.addEventListener("click", () => {
+    try {
+      localStorage.removeItem(RECENT_KEY);
+    } catch (_) {}
+    renderSearchEmpty();
+  });
+  try {
+    searchTrending = searchTrending || (await api("/api/browse?category=trending_day")).results || [];
+  } catch (_) {
+    searchTrending = searchTrending || [];
+  }
+  const grid = box.querySelector("#se-trending");
+  if (!grid) return;
+  grid.innerHTML = "";
+  searchTrending.slice(0, 12).forEach((t) => grid.appendChild(cardEl(t)));
+}
+
+let navBeforeSearch = null;
 function openSearch() {
+  navBeforeSearch = document.querySelector(".nav-item.active")?.dataset.view || null;
+  setNavActive("search");
   searchOverlay.classList.remove("hidden");
   $("#search-results").innerHTML = "";
   $("#search-input").value = "";
   $("#search-input").focus();
+  renderSearchEmpty();
 }
 function closeSearch() {
+  if (!searchOverlay.classList.contains("hidden") && navBeforeSearch) setNavActive(navBeforeSearch);
   searchOverlay.classList.add("hidden");
 }
+// ai deschis un rezultat: căutarea intră la „recente”
+$("#search-results").addEventListener("click", () => rememberSearch($("#search-input").value), true);
 
 $("#search-input").addEventListener(
   "input",
@@ -23,8 +82,10 @@ $("#search-input").addEventListener(
     const current = () => $("#search-input").value.trim() === q; // răspuns pentru textul actual?
     if (q.length < 2) {
       box.innerHTML = "";
+      renderSearchEmpty();
       return;
     }
+    $("#search-empty").classList.add("hidden");
     box.innerHTML = `<div class="status">Se caută...</div>`;
     try {
       const { results, errors } = await api(`/api/search?q=${encodeURIComponent(q)}`);
@@ -45,6 +106,7 @@ $("#search-input").addEventListener("keydown", (e) => {
   if (e.key !== "Enter") return;
   const q = e.target.value.trim();
   if (q.length < 2) return;
+  rememberSearch(q);
   closeSearch();
   go(`#/search/${encodeURIComponent(q)}`);
 });
