@@ -80,16 +80,7 @@ async function autoPlayBest(t, seekTo = null) {
     lastTorrentResults = results;
     buildTorrentsList(t, results);
   }
-  await playTorrent(t, byDevice(results)[0], { seekTo, ps });
-}
-
-/* telefon/tabletă = ecran tactil fără mouse; acolo alegerea automată preferă release-urile
-   ușoare (marcate „mobil” de server: ≤ 2,6 GB H.264 sau [iPad]/КПК) — pornesc repede, mai puține date */
-const IS_TOUCH_DEVICE = window.matchMedia("(pointer: coarse) and (hover: none)").matches;
-function byDevice(results) {
-  if (!IS_TOUCH_DEVICE) return results;
-  const s = (r) => (r.mobile_score != null ? r.mobile_score : r.score || 0);
-  return [...results].sort((a, b) => s(b) - s(a));
+  await playTorrent(t, results[0], { seekTo, ps });
 }
 
 /* calitatea ca etichetă scurtă și clasă de culoare */
@@ -106,12 +97,9 @@ function buildTorrentsList(t, results, opts = {}) {
   const counts = {};
   results.forEach((r) => (counts[r.quality || ""] = (counts[r.quality || ""] || 0) + 1));
   const ruCount = results.filter((r) => r.dub).length;
-  const mobCount = results.filter((r) => r.mobile).length;
   const chips = [["all", `Toate ${results.length}`]];
   ["4K", "1080p", "720p"].forEach((q) => counts[q] && chips.push([q, `${q} ${counts[q]}`]));
   if (ruCount && ruCount < results.length) chips.push(["ru", `Dublaj RU ${ruCount}`]);
-  // ușoare pentru telefon/tabletă (≤ 2,6 GB H.264 sau release-uri [iPad]/КПК)
-  if (mobCount && mobCount < results.length) chips.push(["mob", `Mobil ${mobCount}`]);
 
   box.innerHTML = `<div class="sub-title">${esc(opts.label || "Versiuni")} (${results.length})</div>
     ${chips.length > 2 ? `<div class="q-filter" id="q-filter">${chips
@@ -127,7 +115,6 @@ function buildTorrentsList(t, results, opts = {}) {
     row._src = r;
     row.dataset.q = r.quality || "";
     row.dataset.ru = r.dub ? "1" : "";
-    row.dataset.mob = r.mobile ? "1" : "";
     row.dataset.src = r.indexer || r.source || "";
     row.innerHTML = `
       <div class="t-q ${q.cls}">${esc(q.label)}</div>
@@ -135,7 +122,6 @@ function buildTorrentsList(t, results, opts = {}) {
         <div class="t-title" title="${esc(r.name)}">${esc(r.name)}</div>
         <div class="t-meta">
           ${r.dub ? `<b class="ru-badge">RU</b>` : ""}
-          ${r.mobile ? `<b class="mob-badge" title="Ușor: potrivit pentru telefon/tabletă">Mobil</b>` : ""}
           <span>${esc(r.size || "?")}</span>
           ${r.seeds ? `<span class="t-seeds">▲ ${Number(r.seeds)}</span>` : ""}
           <span class="t-src">${esc(r.indexer || r.source || "?")}</span>
@@ -156,7 +142,7 @@ function buildTorrentsList(t, results, opts = {}) {
         list.querySelectorAll(".torrent-row").forEach((row) => {
           const show =
             f === "all" ||
-            (f === "ru" ? row.dataset.ru === "1" : f === "mob" ? row.dataset.mob === "1" : row.dataset.q === f);
+            (f === "ru" ? row.dataset.ru === "1" : row.dataset.q === f);
           row.classList.toggle("hide-q", !show); // clasă proprie: se combină cu filtrul pe sursă
         });
         setTimeout(updateModalFade, 50);
@@ -225,7 +211,7 @@ async function playEpisode(t, season, episode, seekTo = null) {
 
   // doar pachetele care declară sezonul cerut („S4E1-17”, „3 сезон”); altfel toate
   const packs = results.filter((r) => packMentionsSeason(r.name, season));
-  const candidates = byDevice(packs.length ? packs : results).slice(0, 3);
+  const candidates = (packs.length ? packs : results).slice(0, 3);
 
   let data = null, chosen = null;
   for (const c of candidates) {

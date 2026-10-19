@@ -110,42 +110,6 @@ def score_torrent(item: dict, query_year: int | None = None) -> tuple[float, str
     return round(score, 2), q
 
 
-# ----------------- release-uri pentru telefon/tabletă -----------------
-# Release-uri făcute anume pentru dispozitive mobile („[iPad]”, „[iPhone]”, „| КПК |”, „MP4, 960x”)
-# sau, mai general, ușoare: ≤ 2,6 GB în H.264 — pornesc repede și nu mănâncă datele mobile.
-_MOBILE_TAG_RE = re.compile(r"ipad|iphone|android|\bmobile|мобил|смартфон|планшет|\bкпк\b|\b3gp\b|\bpsp\b", re.I)
-MOBILE_MAX_GB = 2.6
-MOBILE_EXTRA = 5  # câte release-uri ușoare se adaugă peste primele N din lista de versiuni
-
-
-def is_mobile(item: dict) -> bool:
-    name = item.get("name") or ""
-    n = name.lower()
-    # HEVC / 10-bit / 4K nu sunt „mobil” nici cu marcaj [iPad]/КПК: Safari pe iPhone nu redă MKV,
-    # iar conversia de pe server copiază video-ul doar pentru H.264
-    if _HEVC_RE.search(n) or re.search(r"10.?bit|hi10", n) or quality_label(name) in ("4K", "CAM"):
-        return False
-    if _MOBILE_TAG_RE.search(name):
-        return True
-    size_gb = _parse_size_gb(item.get("size"))
-    return size_gb is not None and 0.4 <= size_gb <= MOBILE_MAX_GB
-
-
-def mobile_score(item: dict, score: float) -> float:
-    """Scorul pentru alegerea AUTO pe telefon/tabletă: pornește de la scorul obișnuit
-    (dublajul RU rămâne dominant), dar preferă release-urile ușoare și coboară 4K / gigantii."""
-    s = score
-    if is_mobile(item):
-        s += 6
-    q = quality_label(item.get("name") or "")
-    if q == "4K":
-        s -= 4
-    size_gb = _parse_size_gb(item.get("size"))
-    if size_gb is not None and size_gb > 8:
-        s -= 3
-    return round(s, 2)
-
-
 # marcaje de tip RuTracker/Rutor pentru dublaj rusesc:
 #  „Dub (Videofilm Int.)” — „Dub” simplu înseamnă dublaj RU; „Dub (Ukr)” e ucrainean
 #  „| D |”, „| D, P, A |”, „| D | Videofilm” — litera D în lista de piste audio
@@ -471,7 +435,6 @@ def raw_search_sync(query: str, wait_s: float = 15.0, limit: int = 200) -> dict:
         q = quality_label(r.get("name") or "")
         r["quality"] = q or ""
         r["dub"] = "RU" if has_ru_audio(r.get("name")) else ""
-        r["mobile"] = is_mobile(r)
     results.sort(key=lambda r: (r.get("seeds") or 0), reverse=True)
     return {"results": results[:limit], "slow": slow, "failed": sorted(failed)}
 
@@ -667,17 +630,11 @@ async def search_torrents(query: str, limit: int | None = None) -> list[dict]:
         annotated.append({
             **r,
             "score": score,
-            "mobile": is_mobile(r),
-            "mobile_score": mobile_score(r, score),
             "quality": q or "",
             "dub": "RU" if has_ru_audio(r.get("name")) else "",
         })
     annotated.sort(key=lambda r: r["score"], reverse=True)
-    # primele `limit` după scorul de desktop sunt de obicei toate grele (1080p/4K); adăugăm și
-    # cele mai bune release-uri ușoare, ca filtrul „Mobil” și alegerea pe telefon să aibă din ce
-    top = annotated[:limit]
-    light = sorted((r for r in annotated[limit:] if r["mobile"]), key=lambda r: r["mobile_score"], reverse=True)
-    annotated = sorted(top + light[:MOBILE_EXTRA], key=lambda r: r["score"], reverse=True)
+    annotated = annotated[:limit]
     _SEARCH_CACHE[cache_key] = (time.monotonic(), annotated)
     return annotated
 
