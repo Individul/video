@@ -1661,3 +1661,14 @@ body.bk-open main#content { padding-bottom: 7rem; }
 .bk-thumb .bk-gen { padding: 6px; }
 .bk-thumb .bk-gen-title { font-size: 0.42rem; -webkit-line-clamp: 4; }
 .bk-thumb .bk-gen-author, .bk-thumb .bk-gen-mark, .bk-thumb .bk-gen::after { display: none; }
+
+/* volumul playerului de cărți */
+.bp-vol { display: flex; align-items: center; }
+.bp-vol input {
+  -webkit-appearance: none; appearance: none; width: 84px; height: 4px; border-radius: 2px; margin: 0 6px 0 0;
+  background: linear-gradient(90deg, var(--accent) var(--v, 100%), rgba(var(--ink), 0.18) var(--v, 100%));
+  cursor: pointer;
+}
+.bp-vol input::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%; background: var(--text); }
+.bp-vol input::-moz-range-thumb { width: 12px; height: 12px; border: none; border-radius: 50%; background: var(--text); }
+@media (max-width: 760px) { .bp-vol input { display: none; } }

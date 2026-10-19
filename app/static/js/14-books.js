@@ -453,6 +453,10 @@ function bkBar() {
       <button class="bp-b bp-play" data-a="play" title="Redă / pauză">${svg(I.play, 26)}</button>
       <button class="bp-b" data-a="fwd" title="Înainte 30 s">${svg(BK_ICONS.fwd30, 22)}<small>30</small></button>
       <button class="bp-b bp-speed" data-a="speed" title="Viteza">1×</button>
+      <div class="bp-vol">
+        <button class="bp-b" data-a="mute" title="Sunet / mut">${svg(I.vol, 20)}</button>
+        <input type="range" min="0" max="100" value="100" aria-label="Volum" title="Volum (rotița mouse-ului)">
+      </div>
       <button class="bp-b" data-a="list" title="Piste">${svg(BK_ICONS.list, 20)}</button>
       <button class="bp-b" data-a="close" title="Închide">${svg(I.close, 18)}</button>
     </div>
@@ -466,7 +470,7 @@ function bkBar() {
   } catch (_) {}
   BP.el = el;
   BP.audio = audio;
-  const range = el.querySelector("input");
+  const range = el.querySelector(".bp-seek input");
   let dragging = false;
   range.addEventListener("input", () => {
     dragging = true;
@@ -520,6 +524,12 @@ function bkBar() {
       bkSyncSpeed();
     }
     if (a === "list") bkToggleTracks();
+    if (a === "mute") {
+      if (audio.muted || audio.volume === 0) {
+        if (audio.volume === 0) audio.volume = 0.5;
+        audio.muted = false;
+      } else audio.muted = true;
+    }
     if (a === "close") bkClose();
   });
   // un film pornit oprește cartea
@@ -534,6 +544,33 @@ function bkBar() {
     ms.setActionHandler("previoustrack", () => BP.i > 0 && bkLoad(BP.i - 1, 0, true));
     ms.setActionHandler("nexttrack", () => BP.i + 1 < BP.tracks.length && bkLoad(BP.i + 1, 0, true));
   }
+  // volumul: glisor + mut, ținute minte; rotița mouse-ului pe glisor = ±5
+  const vol = el.querySelector(".bp-vol input");
+  try {
+    const v = localStorage.getItem("bk-vol");
+    if (v != null) audio.volume = Math.min(1, Math.max(0, +v));
+    audio.muted = localStorage.getItem("bk-muted") === "1";
+  } catch (_) {}
+  const syncVol = () => {
+    vol.value = Math.round((audio.muted ? 0 : audio.volume) * 100);
+    vol.style.setProperty("--v", `${vol.value}%`);
+    el.querySelector('[data-a="mute"]').innerHTML = svg(audio.muted || audio.volume === 0 ? I.mute : I.vol, 20);
+    try {
+      localStorage.setItem("bk-vol", audio.volume);
+      localStorage.setItem("bk-muted", audio.muted ? "1" : "0");
+    } catch (_) {}
+  };
+  const setVol = (v) => {
+    audio.volume = Math.min(1, Math.max(0, v));
+    audio.muted = audio.volume === 0;
+  };
+  vol.addEventListener("input", () => setVol(vol.value / 100));
+  vol.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    setVol((audio.muted ? 0 : audio.volume) + (e.deltaY < 0 ? 0.05 : -0.05));
+  }, { passive: false });
+  audio.addEventListener("volumechange", syncVol);
+  syncVol();
   bkSyncSpeed();
   return el;
 }
