@@ -13,6 +13,18 @@
   --danger: #ea4e4e;
   --radius: 14px;
   --nav-w: 92px;
+  /* tema: culorile de mai jos se schimbă în [data-theme="light"] */
+  --text-2: #cfcfcf;          /* text secundar lizibil (descrieri) */
+  --line: #2f3133;            /* contururi */
+  --ink: 255, 255, 255;       /* baza voalurilor/liniilor semitransparente */
+  --bg-rgb: 29, 31, 32;
+  --bg-content-rgb: 23, 24, 25;
+  --accent-text: var(--accent);   /* accent folosit ca TEXT (pe alb galbenul nu se citește) */
+  --success-text: var(--success);
+  --danger-text: #ff9c9c;
+  --info-text: #8fb6ff;
+  --group: #6f7378;
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -22,7 +34,7 @@
 .scroll-fade {
   position: fixed; left: 0; right: 0; bottom: 0;
   height: 110px;
-  background: linear-gradient(transparent, rgba(10, 10, 10, 0.85));
+  background: linear-gradient(transparent, rgba(var(--bg-content-rgb), 0.92));
   pointer-events: none;
   z-index: 49;
 }
@@ -33,7 +45,7 @@
   display: flex; align-items: center; justify-content: center; gap: 0.7rem;
   margin: 0.6rem 0;
   background: var(--card);
-  border: 1px solid rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(var(--ink), 0.07);
   border-radius: 12px;
   padding: 0.55rem 0.9rem;
 }
@@ -69,10 +81,10 @@
 .login-title { font-size: 1.2rem; font-weight: 700; text-align: center; }
 #login-pass {
   background: var(--card); color: var(--text);
-  border: 1px solid #2f3133; border-radius: 10px;
+  border: 1px solid var(--line); border-radius: 10px;
   padding: 0.7rem 0.9rem; font-size: 1rem; outline: none;
 }
-#login-pass:focus { border-color: var(--accent); }
+#login-pass:focus { border-color: var(--accent-text); }
 .login-err { color: var(--danger); font-size: 0.85rem; text-align: center; }
 
 /* ---------- fără scrollbar-uri vizibile: derularea merge (rotiță/touch), barele dispar ---------- */
@@ -99,7 +111,7 @@ body {
   align-items: center;
   padding: 14px 0;
   gap: 6px;
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  border-right: 1px solid rgba(var(--ink), 0.06);
 }
 .nav-logo {
   min-width: 44px; height: 44px;
@@ -126,7 +138,7 @@ body {
 }
 .nav-item svg { width: 27px; height: 27px; fill: currentColor; flex-shrink: 0; }
 .nav-item:hover { background: var(--card); color: var(--text); }
-.nav-item.active { color: var(--accent); }
+.nav-item.active { color: var(--accent-text); }
 .nav-item.active::before {
   content: "";
   position: absolute; left: -9px; top: 10px; bottom: 10px;
@@ -182,7 +194,7 @@ main#content {
   cursor: pointer;
 }
 .hero-meta { display: flex; gap: 1.1rem; align-items: center; color: var(--sub); font-size: 0.92rem; }
-.hero-meta .stars { color: var(--accent); font-weight: 700; }
+.hero-meta .stars { color: var(--accent-text); font-weight: 700; }
 .hero-actions { display: flex; gap: 0.6rem; margin-top: 1.1rem; flex-wrap: wrap; }
 .btn {
   display: inline-flex; align-items: center; gap: 0.45rem;
@@ -195,7 +207,7 @@ main#content {
 .btn:active { transform: scale(0.97); }
 .btn:hover { filter: brightness(1.06); }
 .btn.ghost {
-  background: rgba(255, 255, 255, 0.09); color: var(--text);
+  background: rgba(var(--ink), 0.09); color: var(--text);
   backdrop-filter: blur(6px);
 }
 .btn.small { padding: 0.38rem 0.9rem; font-size: 0.85rem; }
@@ -248,7 +260,7 @@ main#content {
   width: 34px; height: 34px;
   display: flex; align-items: center; justify-content: center;
   font-size: 0.68rem; font-weight: 700;
-  color: var(--success);
+  color: var(--success-text);
 }
 .card-rate.low { color: var(--danger); }
 .card-tag {
@@ -266,7 +278,7 @@ main#content {
   overflow: hidden;
 }
 .card-sub { color: var(--sub); font-size: 0.7rem; margin-top: 2px; }
-.card-sub.accent { color: var(--accent); font-weight: 600; }
+.card-sub.accent { color: var(--accent-text); font-weight: 600; }
 /* focus vizibil la navigarea cu tastatura */
 .card:focus-visible, .ep-card:focus-visible, .torrent-row:focus-visible,
 .btn:focus-visible, .nav-item:focus-visible, .modal-close:focus-visible {
@@ -276,7 +288,7 @@ main#content {
 .card:focus-visible .card-poster { transform: scale(1.04); }
 .card-progress {
   position: absolute; left: 0; right: 0; bottom: 0;
-  height: 3px; background: rgba(255, 255, 255, 0.15);
+  height: 3px; background: rgba(var(--ink), 0.15);
 }
 .card-progress i { display: block; height: 100%; background: var(--accent); }
 .card .badge-src {
@@ -375,12 +387,12 @@ main#content {
 .modal-original { color: var(--sub); font-size: 0.88rem; margin-bottom: 0.6rem; }
 .modal-chips { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-top: 0.6rem; }
 .modal-chips span {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(var(--ink), 0.1);
   color: var(--text);
   border-radius: 7px; padding: 2px 9px; font-size: 0.74rem;
 }
 .modal-desc {
-  color: #cfcfcf; font-size: 0.92rem; line-height: 1.55;
+  color: var(--text-2); font-size: 0.92rem; line-height: 1.55;
   margin-top: 0.9rem;
   display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical;
   overflow: hidden;
@@ -394,7 +406,7 @@ main#content {
   font-size: 1.8rem; line-height: 1; cursor: pointer; color: var(--text); z-index: 7;
   display: flex; align-items: center; justify-content: center;
 }
-.modal-close:hover { color: var(--accent); }
+.modal-close:hover { color: var(--accent-text); }
 
 .modal-actions { display: flex; gap: 0.6rem; flex-wrap: wrap; margin: 1.3rem 1.8rem; }
 
@@ -407,7 +419,7 @@ main#content {
 .player-box select {
   margin-top: 0.6rem;
   background: var(--card); color: var(--text);
-  border: 1px solid #2f3133; border-radius: 10px;
+  border: 1px solid var(--line); border-radius: 10px;
   padding: 0.5rem 0.7rem; width: 100%;
 }
 .torrent-list {
@@ -419,7 +431,7 @@ main#content {
 .torrent-row {
   display: flex; align-items: center; gap: 0.9rem;
   padding: 0.6rem 1rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid rgba(var(--ink), 0.05);
   cursor: pointer;
   transition: background 0.12s;
 }
@@ -429,7 +441,7 @@ main#content {
 .t-name { flex: 1; min-width: 0; }
 /* numele lung al release-ului: max. 2 rânduri, întreg la hover (title) */
 .t-title {
-  font-size: 0.8rem; line-height: 1.3; color: #d6d6d6;
+  font-size: 0.8rem; line-height: 1.3; color: var(--text-2);
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
   overflow: hidden; word-break: break-word;
 }
@@ -437,32 +449,32 @@ main#content {
   display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.7rem;
   color: var(--sub); font-size: 0.74rem; margin-top: 0.25rem;
 }
-.t-seeds { color: var(--success); }
+.t-seeds { color: var(--success-text); }
 .t-src { opacity: 0.85; }
 /* eticheta de calitate, primul lucru citit pe rând */
 .t-q {
   flex-shrink: 0; width: 52px; text-align: center;
   border-radius: 8px; padding: 0.35rem 0;
   font-size: 0.74rem; font-weight: 800; letter-spacing: 0.2px;
-  background: rgba(255, 255, 255, 0.08); color: var(--sub);
+  background: rgba(var(--ink), 0.08); color: var(--sub);
 }
-.t-q.q-4k { background: rgba(255, 226, 22, 0.16); color: var(--accent); }
-.t-q.q-fhd { background: rgba(118, 230, 122, 0.14); color: var(--success); }
-.t-q.q-hd { background: rgba(120, 170, 255, 0.14); color: #8fb6ff; }
+.t-q.q-4k { background: rgba(255, 226, 22, 0.16); color: var(--accent-text); }
+.t-q.q-fhd { background: rgba(118, 230, 122, 0.14); color: var(--success-text); }
+.t-q.q-hd { background: rgba(120, 170, 255, 0.14); color: var(--info-text); }
 .q-filter {
   display: flex; gap: 0.4rem; flex-wrap: wrap;
   margin: 0 1.8rem 0.7rem;
 }
 .q-filter button {
-  border: 1px solid #2f3133; background: var(--card); color: var(--sub);
+  border: 1px solid var(--line); background: var(--card); color: var(--sub);
   border-radius: 999px; padding: 0.3rem 0.8rem; font-size: 0.78rem; cursor: pointer;
 }
 .q-filter button:hover { color: var(--text); }
-.q-filter button.on { background: var(--accent); color: #111; border-color: var(--accent); font-weight: 700; }
+.q-filter button.on { background: var(--accent); color: #111; border-color: var(--accent-text); font-weight: 700; }
 .video-error {
   margin-top: 0.6rem; padding: 0.7rem 0.9rem;
   border-radius: 10px; font-size: 0.86rem; line-height: 1.45;
-  background: rgba(234, 78, 78, 0.12); color: #ff9c9c;
+  background: rgba(234, 78, 78, 0.12); color: var(--danger-text);
 }
 .torrent-row .btn-play {
   background: var(--accent); color: #111;
@@ -495,7 +507,7 @@ main#content {
   display: flex; align-items: center; gap: 0.5rem;
   margin: 0.7rem 1.8rem 0;
   background: var(--card);
-  border: 1px solid rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(var(--ink), 0.07);
   border-radius: 10px;
   padding: 0.5rem 0.9rem;
   font-size: 0.8rem; color: var(--sub);
@@ -522,7 +534,7 @@ main#content {
   border-radius: 14px;
 }
 .info-panel .info-poster { width: 110px; border-radius: 10px; flex-shrink: 0; }
-.info-panel p { color: #cfcfcf; font-size: 0.9rem; line-height: 1.55; margin: 0.4rem 0 0; }
+.info-panel p { color: var(--text-2); font-size: 0.9rem; line-height: 1.55; margin: 0.4rem 0 0; }
 
 .stream-links {
   margin: 0.8rem 1.8rem 0;
@@ -538,7 +550,7 @@ main#content {
     flex-direction: row;
     justify-content: space-around;
     padding: 4px 0 calc(4px + env(safe-area-inset-bottom));
-    border-right: none; border-top: 1px solid rgba(255, 255, 255, 0.06);
+    border-right: none; border-top: 1px solid rgba(var(--ink), 0.06);
   }
   .nav-logo { display: none; }
   .nav-items { flex-direction: row; gap: 2px; width: 100%; justify-content: space-around; }
@@ -603,7 +615,7 @@ main#content {
 .skel::after {
   content: "";
   position: absolute; inset: 0;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.06), transparent);
+  background: linear-gradient(90deg, transparent, rgba(var(--ink), 0.06), transparent);
   animation: skel-shimmer 1.3s infinite;
 }
 @keyframes skel-shimmer {
@@ -641,7 +653,7 @@ main#content {
 }
 .filter-bar select {
   background: var(--card); color: var(--text);
-  border: 1px solid #2f3133; border-radius: 10px;
+  border: 1px solid var(--line); border-radius: 10px;
   padding: 0.5rem 0.8rem; font-size: 0.88rem;
   cursor: pointer;
 }
@@ -651,7 +663,7 @@ main#content {
 .wl-status {
   margin-top: 0.45rem;
   background: var(--card); color: var(--sub);
-  border: 1px solid #2f3133; border-radius: 8px;
+  border: 1px solid var(--line); border-radius: 8px;
   padding: 0.3rem 0.5rem; font-size: 0.74rem;
   cursor: pointer;
 }
@@ -664,7 +676,7 @@ main#content {
   margin: 0;
   padding: 0 1.8rem;
   background: var(--bg);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid rgba(var(--ink), 0.08);
 }
 .tabs button {
   border: none; background: none; cursor: pointer;
@@ -673,15 +685,15 @@ main#content {
   border-bottom: 2px solid transparent;
 }
 .tabs button:hover { color: var(--text); }
-.tabs button.on { color: var(--accent); border-bottom-color: var(--accent); }
+.tabs button.on { color: var(--accent-text); border-bottom-color: var(--accent-text); }
 
 /* ---------- SEGMENT watchlist-status în modal ---------- */
-.seg { display: inline-flex; border-radius: 10px; overflow: hidden; border: 1px solid #2f3133; }
+.seg { display: inline-flex; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); }
 .seg button {
   border: none; background: none; color: var(--sub);
   padding: 0.55rem 0.9rem; font-size: 0.82rem; cursor: pointer;
 }
-.seg button:hover { color: var(--text); background: rgba(255, 255, 255, 0.05); }
+.seg button:hover { color: var(--text); background: rgba(var(--ink), 0.05); }
 .seg button.on { background: var(--accent); color: #111; font-weight: 700; }
 
 /* ---------- EPISOADE ---------- */
@@ -690,12 +702,12 @@ main#content {
   margin: 0.9rem 1.8rem 0.9rem;
 }
 .season-chips button {
-  border: 1px solid #2f3133; background: var(--card); color: var(--sub);
+  border: 1px solid var(--line); background: var(--card); color: var(--sub);
   border-radius: 999px; padding: 0.26rem 0.75rem; font-size: 0.76rem; cursor: pointer;
   transition: color 0.15s, background 0.15s;
 }
 .season-chips button:hover { color: var(--text); border-color: #4d5153; }
-.season-chips button.on { background: var(--accent); color: #111; border-color: var(--accent); font-weight: 700; }
+.season-chips button.on { background: var(--accent); color: #111; border-color: var(--accent-text); font-weight: 700; }
 .eps-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
@@ -731,12 +743,12 @@ main#content {
 .ep-card:hover .ep-play { opacity: 1; }
 .ep-progress {
   position: absolute; left: 0; right: 0; bottom: 0; height: 3px;
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(var(--ink), 0.2);
 }
 .ep-progress i { display: block; height: 100%; background: var(--accent); }
 .ep-done {
   position: absolute; right: 6px; top: 6px;
-  background: rgba(0, 0, 0, 0.7); color: var(--success);
+  background: rgba(0, 0, 0, 0.7); color: var(--success-text);
   font-size: 0.64rem; border-radius: 6px; padding: 2px 7px;
   display: flex; align-items: center; gap: 3px;
 }
@@ -752,7 +764,7 @@ main#content {
   margin: 1.1rem 1.8rem 0.7rem;
 }
 .info-desc {
-  color: #cfcfcf; font-size: 0.92rem; line-height: 1.6;
+  color: var(--text-2); font-size: 0.92rem; line-height: 1.6;
   margin: 1rem 1.8rem 0;
 }
 .cast-row {
@@ -766,7 +778,7 @@ main#content {
 }
 .cast-chip img {
   width: 72px; height: 72px; border-radius: 50%;
-  object-fit: cover; border: 2px solid rgba(255, 255, 255, 0.12);
+  object-fit: cover; border: 2px solid rgba(var(--ink), 0.12);
 }
 .cast-noimg {
   width: 72px; height: 72px; border-radius: 50%;
@@ -789,8 +801,8 @@ main#content {
   position: absolute; top: calc(50% - 22px); left: calc(50% - 22px);
   width: 44px; height: 44px;
   border-radius: 50%;
-  border: 3px solid rgba(255, 255, 255, 0.25);
-  border-top-color: var(--accent);
+  border: 3px solid rgba(var(--ink), 0.25);
+  border-top-color: var(--accent-text);
   animation: spin 0.9s linear infinite;
   pointer-events: none;
 }
@@ -803,12 +815,12 @@ main#content {
   font-size: 0.78rem; color: var(--sub);
   background: var(--card); border-radius: 8px; padding: 0.35rem 0.7rem;
 }
-.cc-state.on { color: var(--success); }
+.cc-state.on { color: var(--success-text); }
 .btn.danger { background: var(--danger); color: #fff; }
 .auto-pill { font-size: 0.78rem; }
 .ru-badge {
   background: rgba(118, 230, 122, 0.16);
-  color: var(--success);
+  color: var(--success-text);
   border-radius: 5px;
   padding: 0 5px;
   font-size: 0.66rem;
@@ -836,13 +848,13 @@ main#content {
 .row-arrow.left { left: -2.2rem; background: linear-gradient(90deg, var(--bg-content) 30%, transparent); }
 .row-arrow.right { right: -2.2rem; background: linear-gradient(270deg, var(--bg-content) 30%, transparent); }
 .row:hover .row-arrow { opacity: 0.9; }
-.row-arrow:hover { opacity: 1 !important; color: var(--accent); }
+.row-arrow:hover { opacity: 1 !important; color: var(--accent-text); }
 .row-arrow.off { opacity: 0 !important; pointer-events: none; }
 @media (hover: none) { .row-arrow { display: none; } }
 
 /* hero: imaginea lată reală (cadru din film) peste posterul estompat, cu descriere */
 .hero-desc {
-  color: #dcdcdc; font-size: 0.95rem; line-height: 1.55;
+  color: var(--text-2); font-size: 0.95rem; line-height: 1.55;
   margin-top: 0.8rem; max-width: 620px;
   display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
 }
@@ -858,8 +870,8 @@ main#content {
 .hero.has-backdrop::after {
   content: ""; position: absolute; inset: 0; z-index: 0; pointer-events: none;
   background:
-    linear-gradient(90deg, rgba(23, 24, 25, 0.96) 0%, rgba(23, 24, 25, 0.78) 34%, rgba(23, 24, 25, 0.15) 70%, transparent),
-    linear-gradient(to top, rgba(23, 24, 25, 0.9), transparent 45%);
+    linear-gradient(90deg, rgba(var(--bg-content-rgb), 0.96) 0%, rgba(var(--bg-content-rgb), 0.78) 34%, rgba(var(--bg-content-rgb), 0.15) 70%, transparent),
+    linear-gradient(to top, rgba(var(--bg-content-rgb), 0.9), transparent 45%);
 }
 
 /* fereastra filmului: imaginea lată în antet */
@@ -870,7 +882,7 @@ main#content {
 .modal-head.has-backdrop::after {
   content: ""; position: absolute; inset: 0; z-index: 0;
   background:
-    linear-gradient(90deg, rgba(29, 31, 32, 0.94) 0%, rgba(29, 31, 32, 0.7) 45%, rgba(29, 31, 32, 0.2) 100%),
+    linear-gradient(90deg, rgba(var(--bg-rgb), 0.94) 0%, rgba(var(--bg-rgb), 0.7) 45%, rgba(var(--bg-rgb), 0.2) 100%),
     linear-gradient(to top, var(--bg), transparent 45%);
 }
 
@@ -898,23 +910,23 @@ main#content {
 /* =================== meniu cu categorii =================== */
 #nav { overflow-y: auto; }
 .nav-item { height: 58px; flex-shrink: 0; }
-.nav-sep { width: 36px; height: 1px; background: rgba(255, 255, 255, 0.08); margin: 4px auto; flex-shrink: 0; }
+.nav-sep { width: 36px; height: 1px; background: rgba(var(--ink), 0.08); margin: 4px auto; flex-shrink: 0; }
 
 /* =================== pagina filmului (în stilul Lampa) =================== */
 .hero-kicker {
-  color: var(--accent); font-size: 0.8rem; font-weight: 700;
+  color: var(--accent-text); font-size: 0.8rem; font-weight: 700;
   text-transform: uppercase; letter-spacing: 1px; margin-bottom: 0.4rem;
 }
-.d-pre { color: #cfcfcf; font-size: 0.95rem; margin-bottom: 0.35rem; }
+.d-pre { color: var(--text-2); font-size: 0.95rem; margin-bottom: 0.35rem; }
 .d-tagline { color: #e6e6e6; font-size: 1.05rem; font-style: italic; margin: 0.35rem 0 0.2rem; }
 .d-badges { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.9rem; }
 .d-rate { font-size: 1.25rem; font-weight: 800; color: var(--text); margin-right: 0.3rem; }
 .d-rate small { font-size: 0.68rem; font-weight: 700; color: var(--sub); margin-left: 2px; vertical-align: middle; }
 .d-box {
-  border: 1.5px solid rgba(255, 255, 255, 0.75); border-radius: 6px;
+  border: 1.5px solid rgba(var(--ink), 0.75); border-radius: 6px;
   padding: 1px 8px; font-size: 0.78rem; font-weight: 700; color: var(--text);
 }
-.d-box.soft { border-color: rgba(255, 255, 255, 0.25); color: var(--sub); font-weight: 600; }
+.d-box.soft { border-color: rgba(var(--ink), 0.25); color: var(--sub); font-weight: 600; }
 .d-meta { color: #d8d8d8; font-size: 0.92rem; margin-top: 0.8rem; }
 .d-meta .dot { color: var(--sub); margin: 0 0.35rem; }
 .modal-info .modal-actions { margin: 1.3rem 0 0; }
@@ -937,7 +949,7 @@ main#content {
 .cast-scroll .cast-chip img, .cast-scroll .cast-noimg { width: 92px; height: 92px; }
 .cast-chip.link { cursor: pointer; border-radius: 12px; padding: 0.3rem 0; transition: background 0.15s; }
 .cast-chip.link:hover { background: var(--card); }
-.cast-chip.link:hover .cast-name { color: var(--accent); }
+.cast-chip.link:hover .cast-name { color: var(--accent-text); }
 .cast-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* pagina actorului */
@@ -971,11 +983,11 @@ main#content {
   .modal-poster { width: 240px; border-radius: 16px; }
   .modal-info h2 { font-size: 3rem; line-height: 1.08; margin: 0; letter-spacing: -0.5px; }
   .modal-info { max-width: 900px; }
-  .modal-desc { -webkit-line-clamp: 3; font-size: 0.98rem; color: #dcdcdc; max-width: 820px; margin-top: 1rem; }
+  .modal-desc { -webkit-line-clamp: 3; font-size: 0.98rem; color: var(--text-2); max-width: 820px; margin-top: 1rem; }
   .modal-backdrop.sharp { filter: brightness(0.7); background-position: center 18%; }
   .modal-head.has-backdrop::after {
     background:
-      linear-gradient(90deg, rgba(23, 24, 25, 0.95) 0%, rgba(23, 24, 25, 0.75) 38%, rgba(23, 24, 25, 0.15) 75%, transparent),
+      linear-gradient(90deg, rgba(var(--bg-content-rgb), 0.95) 0%, rgba(var(--bg-content-rgb), 0.75) 38%, rgba(var(--bg-content-rgb), 0.15) 75%, transparent),
       linear-gradient(to top, var(--bg-content) 2%, transparent 55%);
   }
   .modal-close { position: fixed; top: 16px; right: 22px; background: rgba(0, 0, 0, 0.5); }
@@ -1009,21 +1021,21 @@ main#content {
 .cal-day-head {
   display: flex; align-items: center; gap: 0.6rem;
   font-size: 1.05rem; font-weight: 700; margin-bottom: 0.8rem;
-  padding-bottom: 0.45rem; border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  padding-bottom: 0.45rem; border-bottom: 1px solid rgba(var(--ink), 0.07);
 }
 .cal-day-head span {
   font-size: 0.72rem; font-weight: 700; color: var(--sub);
   background: var(--card); border-radius: 999px; padding: 1px 8px;
 }
-.cal-day.today .cal-day-head { color: var(--accent); border-bottom-color: rgba(255, 226, 22, 0.35); }
+.cal-day.today .cal-day-head { color: var(--accent-text); border-bottom-color: rgba(255, 226, 22, 0.35); }
 .cal-badge {
   position: absolute; left: 8px; top: 8px;
   font-size: 0.66rem; font-weight: 800; border-radius: 6px; padding: 2px 7px;
   background: rgba(0, 0, 0, 0.72); color: var(--text);
 }
 .cal-badge.k-cinema { color: #ffb36b; }
-.cal-badge.k-digital { color: var(--success); }
-.cal-badge.k-episode { color: #8fb6ff; }
+.cal-badge.k-digital { color: var(--success-text); }
+.cal-badge.k-episode { color: var(--info-text); }
 
 /* =================== MODUL CINEMA (player pe toată fereastra) =================== */
 body.cinema-open { overflow: hidden; }
@@ -1041,16 +1053,16 @@ body.cinema-open { overflow: hidden; }
 }
 .cin-back {
   width: 44px; height: 44px; border-radius: 50%; border: none; cursor: pointer;
-  background: rgba(255, 255, 255, 0.12); color: var(--text);
+  background: rgba(var(--ink), 0.12); color: var(--text);
   display: flex; align-items: center; justify-content: center; flex-shrink: 0;
 }
-.cin-back:hover { background: rgba(255, 255, 255, 0.22); }
+.cin-back:hover { background: rgba(var(--ink), 0.22); }
 .cin-titles { min-width: 0; flex: 1; }
 .cin-title { font-size: 1.15rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cin-sub { color: #cfcfcf; font-size: 0.85rem; margin-top: 2px; }
+.cin-sub { color: var(--text-2); font-size: 0.85rem; margin-top: 2px; }
 .cin-mini {
-  font-size: 0.8rem; color: #d6d6d6; white-space: nowrap;
-  background: rgba(255, 255, 255, 0.08); border-radius: 999px; padding: 0.3rem 0.8rem;
+  font-size: 0.8rem; color: var(--text-2); white-space: nowrap;
+  background: rgba(var(--ink), 0.08); border-radius: 999px; padding: 0.3rem 0.8rem;
   display: flex; align-items: center; gap: 0.45rem;
 }
 .cin-mini:empty { display: none; }
@@ -1061,10 +1073,10 @@ body.cinema-open { overflow: hidden; }
 .cin-tabs { display: flex; gap: 0.35rem; }
 .cin-tab {
   border: none; cursor: pointer; border-radius: 10px;
-  background: rgba(255, 255, 255, 0.1); color: var(--text);
+  background: rgba(var(--ink), 0.1); color: var(--text);
   padding: 0.5rem 0.95rem; font-size: 0.88rem; font-weight: 600;
 }
-.cin-tab:hover { background: rgba(255, 255, 255, 0.2); }
+.cin-tab:hover { background: rgba(var(--ink), 0.2); }
 .cin-tab.on { background: var(--accent); color: #111; }
 
 .cin-body { flex: 1; display: flex; min-height: 0; }
@@ -1076,11 +1088,11 @@ body.cinema-open { overflow: hidden; }
   border-radius: 0 !important; object-fit: contain; background: #000; cursor: pointer;
 }
 .cin-status {
-  margin: auto; text-align: center; color: #cfcfcf; font-size: 1.05rem; padding: 2rem; max-width: 720px;
+  margin: auto; text-align: center; color: var(--text-2); font-size: 1.05rem; padding: 2rem; max-width: 720px;
   display: flex; flex-direction: column; gap: 0.6rem; overflow-wrap: anywhere;
 }
 .cin-status small { color: var(--sub); font-size: 0.82rem; }
-.cin-status.error { color: #ff9c9c; }
+.cin-status.error { color: var(--danger-text); }
 .cin-video .buffer { top: calc(50% - 26px); left: calc(50% - 26px); width: 52px; height: 52px; }
 .cin-video .video-error {
   position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
@@ -1103,10 +1115,10 @@ body.cinema-open { overflow: hidden; }
   transition: opacity 0.25s;
 }
 .cin-progress { position: relative; height: 18px; display: flex; align-items: center; cursor: pointer; touch-action: none; }
-.cin-track { position: relative; width: 100%; height: 4px; border-radius: 4px; background: rgba(255, 255, 255, 0.22); transition: height 0.12s; }
+.cin-track { position: relative; width: 100%; height: 4px; border-radius: 4px; background: rgba(var(--ink), 0.22); transition: height 0.12s; }
 .cin-progress:hover .cin-track { height: 7px; }
 .cin-track i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; }
-.cin-track .buf { background: rgba(255, 255, 255, 0.38); }
+.cin-track .buf { background: rgba(var(--ink), 0.38); }
 .cin-track .played { background: var(--accent); }
 .cin-track .knob {
   width: 14px; height: 14px; top: 50%; bottom: auto; margin: -7px 0 0 -7px; border-radius: 50%;
@@ -1125,19 +1137,19 @@ body.cinema-open { overflow: hidden; }
   width: 42px; height: 42px; border-radius: 10px;
   display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
 }
-.cbtn:hover { background: rgba(255, 255, 255, 0.12); color: var(--accent); }
+.cbtn:hover { background: rgba(var(--ink), 0.12); color: var(--accent-text); }
 .cbtn.txt { width: auto; padding: 0 0.7rem; font-weight: 800; font-size: 0.85rem; letter-spacing: 0.3px; }
-.cbtn.on { color: var(--accent); }
+.cbtn.on { color: var(--accent-text); }
 .cin-vol { display: flex; align-items: center; }
-.cin-vol input { width: 0; opacity: 0; transition: width 0.18s, opacity 0.18s; accent-color: var(--accent); }
+.cin-vol input { width: 0; opacity: 0; transition: width 0.18s, opacity 0.18s; accent-color: var(--accent-text); }
 .cin-vol:hover input, .cin-vol input:focus { width: 90px; opacity: 1; margin-right: 0.4rem; }
-.cin-time { font-size: 0.86rem; color: #e0e0e0; font-variant-numeric: tabular-nums; margin-left: 0.4rem; white-space: nowrap; }
+.cin-time { font-size: 0.86rem; color: var(--text-2); font-variant-numeric: tabular-nums; margin-left: 0.4rem; white-space: nowrap; }
 
 /* meniuri (subtitrări, viteză) */
 .cin-pop {
   position: absolute; bottom: 82px; right: 7.5rem; z-index: 5;
   min-width: 220px; max-width: 320px;
-  background: rgba(24, 25, 26, 0.97); border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(24, 25, 26, 0.97); border: 1px solid rgba(var(--ink), 0.08);
   border-radius: 14px; padding: 0.7rem; box-shadow: 0 14px 50px rgba(0, 0, 0, 0.6);
 }
 .cin-pop.right { right: 4.6rem; min-width: 150px; }
@@ -1149,8 +1161,8 @@ body.cinema-open { overflow: hidden; }
   border: none; background: none; color: var(--text); cursor: pointer; text-align: left;
   padding: 0.5rem 0.7rem; border-radius: 8px; font-size: 0.9rem;
 }
-.cin-pop-list button:hover { background: rgba(255, 255, 255, 0.08); }
-.cin-pop-list button.on { color: var(--accent); font-weight: 700; }
+.cin-pop-list button:hover { background: rgba(var(--ink), 0.08); }
+.cin-pop-list button.on { color: var(--accent-text); font-weight: 700; }
 .cin-pop-list button.on::before { content: "✓ "; }
 
 /* „urmează” peste video */
@@ -1162,21 +1174,21 @@ body.cinema-open { overflow: hidden; }
 /* panoul lateral */
 .cin-panel {
   width: min(460px, 38vw); flex-shrink: 0; overflow-y: auto;
-  background: var(--bg); border-left: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--bg); border-left: 1px solid rgba(var(--ink), 0.06);
   padding: 4.6rem 0 1.5rem; position: relative; z-index: 5;
 }
 .cin-panel .sub-title, .cin-panel .q-filter, .cin-panel .torrent-list,
 .cin-panel .season-chips, .cin-panel .eps-grid, .cin-panel .eps-more-wrap { margin-left: 1rem !important; margin-right: 1rem !important; }
 .cin-panel #cin-files select {
   width: calc(100% - 2rem); margin: 0 1rem 0.6rem;
-  background: var(--card); color: var(--text); border: 1px solid #2f3133; border-radius: 10px; padding: 0.5rem 0.7rem;
+  background: var(--card); color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 0.5rem 0.7rem;
 }
 .cin-panel .eps-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
 .cin-panel .t-q { width: 46px; }
 .cin-verdict { margin: 0 1rem 1rem; padding: 0.8rem 1rem; border-radius: 12px; font-size: 0.92rem; line-height: 1.45; }
-.cin-verdict.ok { background: rgba(118, 230, 122, 0.12); color: var(--success); }
-.cin-verdict.mid { background: rgba(255, 226, 22, 0.1); color: var(--accent); }
-.cin-verdict.bad { background: rgba(234, 78, 78, 0.13); color: #ff9c9c; }
+.cin-verdict.ok { background: rgba(118, 230, 122, 0.12); color: var(--success-text); }
+.cin-verdict.mid { background: rgba(255, 226, 22, 0.1); color: var(--accent-text); }
+.cin-verdict.bad { background: rgba(234, 78, 78, 0.13); color: var(--danger-text); }
 .cin-facts { margin: 0 1rem !important; font-size: 0.86rem; }
 .cin-facts dd.wrap { overflow-wrap: anywhere; color: var(--sub); }
 .cin-hint { margin: 1rem; color: var(--sub); font-size: 0.8rem; line-height: 1.45; }
@@ -1222,23 +1234,23 @@ body.cinema-open { overflow: hidden; }
 }
 .sp-row:hover { background: var(--card-hover); }
 .sp-comp {
-  flex-shrink: 0; width: 150px; font-size: 0.74rem; font-weight: 800; color: var(--accent);
+  flex-shrink: 0; width: 150px; font-size: 0.74rem; font-weight: 800; color: var(--accent-text);
   text-transform: uppercase; letter-spacing: 0.4px; line-height: 1.25;
 }
 .sp-main { flex: 1; min-width: 0; }
 .sp-match { font-size: 0.98rem; font-weight: 700; overflow-wrap: anywhere; }
-.sp-date { display: inline-block; margin-left: 0.6rem; padding: 0.1rem 0.5rem; border-radius: 6px; background: rgba(255, 255, 255, 0.07); color: var(--sub); font-size: 0.76rem; font-weight: 600; vertical-align: 0.1em; white-space: nowrap; }
+.sp-date { display: inline-block; margin-left: 0.6rem; padding: 0.1rem 0.5rem; border-radius: 6px; background: rgba(var(--ink), 0.07); color: var(--sub); font-size: 0.76rem; font-weight: 600; vertical-align: 0.1em; white-space: nowrap; }
 .sp-meta { color: var(--sub); font-size: 0.78rem; margin-top: 2px; }
 .sp-meta:empty { display: none; }
 .sp-vars { display: flex; flex-wrap: wrap; gap: 0.4rem; justify-content: flex-end; flex-shrink: 0; max-width: 46%; }
 .sp-var {
   display: inline-flex; align-items: center; gap: 0.35rem;
-  border: 1px solid #34373a; background: rgba(255, 255, 255, 0.04); color: var(--text);
+  border: 1px solid #34373a; background: rgba(var(--ink), 0.04); color: var(--text);
   border-radius: 10px; padding: 0.42rem 0.7rem; cursor: pointer; font-size: 0.82rem;
 }
 .sp-var svg { fill: var(--accent); }
 .sp-var small { color: var(--sub); font-size: 0.72rem; }
-.sp-var:hover { border-color: var(--accent); background: rgba(255, 226, 22, 0.08); }
+.sp-var:hover { border-color: var(--accent-text); background: rgba(255, 226, 22, 0.08); }
 @media (max-width: 760px) {
   .sp-row { flex-wrap: wrap; }
   .sp-comp { width: 100%; }
@@ -1246,8 +1258,8 @@ body.cinema-open { overflow: hidden; }
 }
 
 /* =================== live (Ace Stream) =================== */
-.live-page .ts-form .live-name { flex: 0 0 180px; border-left: 1px solid rgba(255,255,255,0.1); padding-left: 0.8rem; font-size: 0.95rem; }
-.live-page .ts-form .btn.ghost { background: transparent; border: 1px solid rgba(255,255,255,0.18); }
+.live-page .ts-form .live-name { flex: 0 0 180px; border-left: 1px solid rgba(var(--ink), 0.1); padding-left: 0.8rem; font-size: 0.95rem; }
+.live-page .ts-form .btn.ghost { background: transparent; border: 1px solid rgba(var(--ink), 0.18); }
 .live-page .live-sub { margin: 1.4rem 0 0.7rem !important; }
 .live-page .live-sub .live-sub-note { color: var(--sub); font-size: 0.72rem; font-weight: 400; }
 .live-page .live-sub .live-refresh { margin-left: auto; font-size: 0.75rem; padding: 0.2rem 0.6rem; }
@@ -1257,7 +1269,7 @@ body.cinema-open { overflow: hidden; }
 .live-dot.off { background: #4a4a4a; box-shadow: none; }
 .live-badge { color: #ff4d4d; font-size: 0.68rem; font-weight: 800; border: 1px solid rgba(255,77,77,0.5); border-radius: 4px; padding: 0 0.3rem; margin-left: 0.35rem; }
 .live-when { color: var(--sub); font-size: 0.8rem; margin-right: 0.4rem; min-width: 3.4rem; text-align: right; }
-.flag { width: 19px; height: 14px; object-fit: cover; border-radius: 2px; margin-right: 0.4rem; vertical-align: -2px; box-shadow: 0 0 0 1px rgba(255,255,255,0.15); }
+.flag { width: 19px; height: 14px; object-fit: cover; border-radius: 2px; margin-right: 0.4rem; vertical-align: -2px; box-shadow: 0 0 0 1px rgba(var(--ink), 0.15); }
 .cinema.cin-live .cin-tabs { display: none; }
 .cin-video.is-live .cin-progress, .cin-video.is-live #c-back, .cin-video.is-live #c-fwd,
 .cin-video.is-live #c-speed, .cin-video.is-live #c-prev, .cin-video.is-live #c-next { display: none !important; }
@@ -1269,7 +1281,7 @@ body.cinema-open { overflow: hidden; }
 
 /* =================== sport: căutare =================== */
 .sp-search { margin-top: 0.2rem; }
-#sp-note a { color: var(--accent); text-decoration: none; font-weight: 600; }
+#sp-note a { color: var(--accent-text); text-decoration: none; font-weight: 600; }
 #sp-note a:hover { text-decoration: underline; }
 .cin-video .video-error .live-open { display: inline-flex; align-items: center; gap: 0.4rem; margin-top: 0.9rem; text-decoration: none; }
 .cin-video.live-failed .cin-bigplay, .cin-video.live-failed .cin-progress { display: none !important; }
@@ -1277,7 +1289,7 @@ body.cinema-open { overflow: hidden; }
 /* release ușor pentru telefon/tabletă */
 .mob-badge {
   background: rgba(96, 165, 250, 0.16);
-  color: #8ab8ff;
+  color: var(--info-text);
   border-radius: 5px;
   padding: 0 5px;
   font-size: 0.66rem;
@@ -1312,7 +1324,7 @@ body.cinema-open { overflow: hidden; }
   .nav-item.active::before { left: -10px; top: 9px; bottom: 9px; }
   .nav-group {
     display: block; padding: 16px 12px 6px; white-space: nowrap;
-    font-size: 0.72rem; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; color: #6f7378;
+    font-size: 0.72rem; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; color: var(--group);
   }
   .nav-collapse {
     display: flex; align-items: center; gap: 14px; margin-top: auto; padding: 0 12px; height: 38px; flex-shrink: 0;
@@ -1326,6 +1338,46 @@ body.cinema-open { overflow: hidden; }
   body.nav-collapsed .nav-logo::after { content: "C"; font-size: 1.1rem; }
   body.nav-collapsed .nav-tip { display: none; }
   body.nav-collapsed .nav-item, body.nav-collapsed .nav-collapse { justify-content: center; padding: 0; }
-  body.nav-collapsed .nav-group { font-size: 0; padding: 0; height: 1px; margin: 10px 14px; background: rgba(255, 255, 255, 0.08); }
-  body.nav-collapsed .nav-collapse svg { transform: rotate(180deg); }
+  body.nav-collapsed .nav-group { font-size: 0; padding: 0; height: 1px; margin: 10px 14px; background: rgba(var(--ink), 0.08); }
+  body.nav-collapsed #nav-collapse svg { transform: rotate(180deg); }
+  .nav-theme + .nav-collapse { margin-top: 2px; }
 }
+
+
+/* =================== tema deschisă =================== */
+:root[data-theme="light"] {
+  --bg: #eef0f3;
+  --bg-content: #f7f8fa;
+  --card: #ffffff;
+  --card-hover: #e9ecf0;
+  --text: #16181b;
+  --sub: #5f656d;
+  --text-2: #353a40;
+  --line: #d9dde3;
+  --ink: 0, 0, 0;
+  --bg-rgb: 238, 240, 243;
+  --bg-content-rgb: 247, 248, 250;
+  --accent-text: #9a7700;
+  --success-text: #1f8f3a;
+  --danger-text: #c62828;
+  --info-text: #2f6fd6;
+  --group: #8a9099;
+  color-scheme: light;
+}
+/* rămân întunecate și în tema deschisă: player-ul și bannerele cu text alb peste imagine */
+:root[data-theme="light"] .cinema,
+:root[data-theme="light"] .video-wrap,
+:root[data-theme="light"] .hero,
+:root[data-theme="light"] .modal-head.has-backdrop {
+  --bg: #1d1f20; --bg-content: #171819; --card: #262829; --card-hover: #353535;
+  --text: #fff; --sub: #a3a3a3; --text-2: #cfcfcf; --line: #2f3133; --ink: 255, 255, 255;
+  --bg-rgb: 29, 31, 32; --bg-content-rgb: 23, 24, 25; --accent-text: var(--accent);
+  --success-text: var(--success); --danger-text: #ff9c9c; --info-text: #8fb6ff; --group: #6f7378;
+  color-scheme: dark;
+  color: var(--text);
+}
+:root[data-theme="light"] .card, :root[data-theme="light"] .torrent-row, :root[data-theme="light"] .sp-row,
+:root[data-theme="light"] .ep-card .ep-thumb { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06); }
+
+/* butonul de temă: soare = trece la deschisă, lună = trece la întunecată */
+:root[data-theme="light"] .nav-theme .i-sun, :root:not([data-theme="light"]) .nav-theme .i-moon { display: none; }

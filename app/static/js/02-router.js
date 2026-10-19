@@ -78,6 +78,26 @@ function setNavCollapsed(on) {
     localStorage.setItem(NAV_KEY, on ? "1" : "0");
   } catch (_) {}
 }
+/* tema deschisă / întunecată (aplicată deja din <head>, aici doar comutatorul) */
+function syncThemeButton() {
+  const light = document.documentElement.dataset.theme === "light";
+  const b = $("#nav-theme");
+  if (!b) return;
+  const label = light ? "Temă întunecată" : "Temă deschisă";
+  b.title = label;
+  b.setAttribute("aria-label", label);
+  b.querySelector(".nav-tip").textContent = label;
+}
+$("#nav-theme")?.addEventListener("click", () => {
+  const next = document.documentElement.dataset.theme === "light" ? "dark" : "light";
+  document.documentElement.dataset.theme = next;
+  try {
+    localStorage.setItem("cinema-theme", next);
+  } catch (_) {}
+  syncThemeButton();
+});
+syncThemeButton();
+
 // numele butoanelor apar la hover când meniul e strâns
 document.querySelectorAll(".nav-item").forEach((b) => (b.title = b.querySelector(".nav-tip")?.textContent || ""));
 $("#nav-collapse")?.addEventListener("click", () => setNavCollapsed(!document.body.classList.contains("nav-collapsed")));

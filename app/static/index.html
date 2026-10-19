@@ -6,7 +6,16 @@
 <title>Cinema</title>
 <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 <link rel="apple-touch-icon" href="/static/favicon.svg">
-<link rel="stylesheet" href="/static/style.css?v=47">
+<script>
+  /* tema aleasă (sau a sistemului, dacă n-ai ales) se aplică înainte de desenare: fără clipire */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem("cinema-theme"); } catch (e) {}
+    if (!t) t = window.matchMedia && matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="/static/style.css?v=48">
 </head>
 <body>
 
@@ -71,6 +80,10 @@
       <span class="nav-tip">Descărcări</span>
     </button>
   </div>
+  <button class="nav-collapse nav-theme" id="nav-theme" type="button" aria-label="Schimbă tema" title="Schimbă tema">
+    <svg viewBox="0 0 24 24"><path class="i-moon" d="M12.3 22a10 10 0 0 1-2.6-19.7 8 8 0 0 0 10.3 10.3A10 10 0 0 1 12.3 22z"/><path class="i-sun" d="M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10zm0-5 1.5 3h-3zm0 20-1.5-3h3zM2 12l3-1.5v3zm20 0-3 1.5v-3zM4.9 4.9l3.2 1-2.2 2.2zm14.2 14.2-3.2-1 2.2-2.2zM4.9 19.1l1-3.2 2.2 2.2zM19.1 4.9l-1 3.2-2.2-2.2z"/></svg>
+    <span class="nav-tip">Temă deschisă</span>
+  </button>
   <button class="nav-collapse" id="nav-collapse" type="button" aria-label="Strânge meniul" title="Strânge meniul">
     <svg viewBox="0 0 24 24"><path d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12z"/></svg>
     <span class="nav-tip">Strânge</span>
@@ -138,7 +151,7 @@
 
 <!-- scripturi clasice, în ordine: împart același spațiu global (vezi js/01-core.js) -->
 <script src="/static/js/01-core.js?v=48"></script>
-<script src="/static/js/02-router.js?v=49"></script>
+<script src="/static/js/02-router.js?v=50"></script>
 <script src="/static/js/03-pages.js?v=48"></script>
 <script src="/static/js/04-live.js?v=52"></script>
 <script src="/static/js/05-pages-more.js?v=51"></script>
