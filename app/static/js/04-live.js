@@ -346,9 +346,13 @@ async function playLive({ name, ref, url }) {
             $("#buffer")?.classList.add("hidden");
             const box = playerBox.querySelector("#video-error");
             if (box) {
-              box.innerHTML = streamInfo.interlaced
+              // acestream:// deschide canalul direct în aplicația Ace Stream de pe calculator
+              const open = sess.content_id
+                ? `<a class="btn live-open" href="acestream://${esc(sess.content_id)}">${svg(I.play, 16)} Deschide în Ace Stream</a>`
+                : "";
+              box.innerHTML = (streamInfo.interlaced
                 ? "Browserul nu poate decoda video-ul acestui canal (1080i întrețesut, ca la TV prin satelit), iar serverul nu-l poate converti în timp real.<br>Încearcă alt link pentru același meci — de obicei există variante 720p — sau deschide-l în Ace Stream pe calculator."
-                : "Browserul nu poate decoda video-ul acestui canal. Încearcă alt link pentru același meci sau deschide-l în Ace Stream pe calculator.";
+                : "Browserul nu poate decoda video-ul acestui canal. Încearcă alt link pentru același meci sau deschide-l în Ace Stream pe calculator.") + open;
               box.classList.remove("hidden");
             }
             return;

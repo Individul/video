@@ -76,6 +76,8 @@ def start(kind: str, ref: str) -> dict:
         "session": sess,
         "playlist": f"/api/live/m/{ih}/{sess}.m3u8?t={mode}",
         "is_live": bool(resp.get("is_live")),
+        # pentru butonul „Deschide în Ace Stream” (acestream:// cere ID-ul de conținut, nu infohash-ul)
+        "content_id": ref if kind == "id" else None,
     }
 
 

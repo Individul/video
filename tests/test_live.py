@@ -58,6 +58,8 @@ def test_start_accepts_live_playlist(monkeypatch):
     monkeypatch.setattr(live, "_get_json", lambda u, timeout=60: {"response": {"playback_url": url, "is_live": 1}})
     out = live.start("id", H)
     assert out["playlist"] == f"/api/live/m/{H}/{S}.m3u8?t=m" and out["is_live"]
+    assert out["content_id"] == H  # pentru butonul acestream://
+    assert live.start("infohash", H)["content_id"] is None  # infohash-ul nu merge în acestream://
 
 
 def test_manifest_rejects_unknown_mode():
