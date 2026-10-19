@@ -478,6 +478,8 @@ async def books_book(
         b, m = await asyncio.gather(
             asyncio.to_thread(books.book, author, title), asyncio.to_thread(books.meta, author, title, True)
         )
+        if not m and b and (b.get("author_alt") or b.get("title_alt")):
+            m = await asyncio.to_thread(books.meta, author, title, True, b.get("author_alt"), b.get("title_alt"))
     except Exception as e:  # noqa: BLE001
         raise _books_err(e) from e
     return {"book": b, "meta": m}
@@ -485,12 +487,15 @@ async def books_book(
 
 @router.get("/books/meta")
 async def books_meta(
-    title: str = Query(min_length=1, max_length=512), author: str | None = Query(None, max_length=256)
+    title: str = Query(min_length=1, max_length=512),
+    author: str | None = Query(None, max_length=256),
+    alt_author: str | None = Query(None, max_length=256),
+    alt_title: str | None = Query(None, max_length=512),
 ) -> dict[str, Any]:
-    """Coperta cărții (LitRes) — cerută leneș de fiecare card."""
+    """Coperta cărții (LitRes / Apple Books) — cerută leneș de fiecare card."""
     from app.sources import books
 
-    return {"meta": await asyncio.to_thread(books.meta, author, title)}
+    return {"meta": await asyncio.to_thread(books.meta, author, title, False, alt_author, alt_title)}
 
 
 @router.post("/books/add")

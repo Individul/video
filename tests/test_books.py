@@ -93,6 +93,7 @@ def test_meta_cached_and_misses_remembered(monkeypatch, tmp_path):
     assert calls == ["search", "arts/7"]
 
     monkeypatch.setattr(books, "_litres_get", lambda path, **p: calls.append(path) or [])
+    monkeypatch.setattr(books, "_apple_find", lambda a, t: calls.append("apple") or None)
     assert books.meta("Nobody", "Nothing") is None
     n = len(calls)
     assert books.meta("Nobody", "Nothing") is None and len(calls) == n  # lipsa e ținută minte
@@ -183,3 +184,43 @@ def test_parse_messy_rutracker_brackets():
     p = parse_title("[Английский] Bulgakov Mikhail / Булгаков Михаил - The Master and Margarita / Мастер и Маргарита "
                     "[Julian Rhind-Tutt, 2009 г., MP3, 64 kbps]")
     assert p["year"] == "2009" and p["narrator"] == "Julian Rhind-Tutt"
+
+
+def test_meta_falls_back_to_text_book_alt_names_and_apple(monkeypatch, tmp_path):
+    monkeypatch.setattr(books, "_META_FILE", tmp_path / "m.json")
+    monkeypatch.setattr(books, "_meta", {"old": {"miss": True, "ts": 9e12}})
+    seen = []
+
+    def fake(path, **params):
+        seen.append((params.get("types"), params.get("q")))
+        if params.get("types") == "text_book" and "Гэтсби" in params["q"]:
+            return [{"instance": {"id": 5, "title": "Великий Гэтсби",
+                                  "persons": [{"full_name": "Фрэнсис Скотт Фицджеральд", "role": "author"}]}}]
+        if params.get("types") == "text_book" and "кафа" in params["q"]:
+            return [{"instance": {"id": 6, "title": "Пако Аррайя. Сливовица и кафа",
+                                  "persons": [{"full_name": "Сергей Костин", "role": "author"}]}}]
+        return []
+
+    monkeypatch.setattr(books, "_litres_get", fake)
+    monkeypatch.setattr(books, "_apple_find", lambda a, t: {"cover": "https://apple/600x600bb.jpg", "description": "d"}
+                        if t == "Markets of Pain" else None)
+    m = books.meta("Fitzgerald Francis Scott", "Der große Gatsby (Filmausgabe)",
+                   alt_author="Фрэнсис Скотт Фицджеральд", alt_title="Великий Гэтсби")
+    assert m["litres_id"] == 5 and ("audiobook", "Великий Гэтсби Фрэнсис Скотт Фицджеральд") in seen
+    assert books.meta("Сергей Костин", "Сливовица и кафа")["litres_id"] == 6
+    m = books.meta("Benjamin Robert Siegel", "Markets of Pain", full=True)
+    assert m["cover"].startswith("https://apple/") and m["description"] == "d"
+
+
+def test_apple_find_matches_title_and_author(monkeypatch):
+    import requests
+
+    data = {"results": [
+        {"collectionName": "Other Book (Unabridged)", "artistName": "Luiz Schwarcz", "artworkUrl100": "https://a/100x100bb.jpg"},
+        {"collectionName": "The First Reader: On Writers and Editors (Unabridged)", "artistName": "Luiz Schwarcz & Alison Entrekin",
+         "artworkUrl100": "https://is1.mzstatic.com/x/100x100bb.jpg", "description": "<p>Despre editori</p>"},
+    ]}
+    monkeypatch.setattr(requests, "get", lambda url, **kw: Resp(data))
+    m = books._apple_find("Luiz Schwarcz", "The First Reader: On Writers and Editors (On Writing)")
+    assert m["cover"] == "https://is1.mzstatic.com/x/600x600bb.jpg" and m["description"] == "Despre editori"
+    assert books._apple_find("Someone Else", "The First Reader") is None  # alt autor

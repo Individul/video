@@ -23,6 +23,17 @@ const bkDate = (iso) => {
   return d.toLocaleDateString("ro-RO", { day: "numeric", month: "short", ...(d.getFullYear() === new Date().getFullYear() ? {} : { year: "numeric" }) });
 };
 
+/* copertă desenată pentru cărțile fără imagine nicăieri: culoarea vine din titlu (mereu aceeași) */
+function bkGenCover(b) {
+  let h = 0;
+  for (const ch of `${b.title}|${b.author || ""}`) h = (h * 31 + ch.codePointAt(0)) >>> 0;
+  return `<div class="bk-gen" style="--h:${h % 360}">
+    <span class="bk-gen-author">${esc(b.author || "")}</span>
+    <b class="bk-gen-title${b.title.length > 42 ? " long" : ""}">${esc(b.title)}</b>
+    <span class="bk-gen-mark">${svg(BK_ICONS.book, 14)}</span>
+  </div>`;
+}
+
 /* ---------- coperți: cerute leneș, câte 4 deodată, doar pentru cardurile vizibile ---------- */
 const bkMeta = new Map(); // bookId -> meta | null
 const bkQueue = [];
@@ -36,7 +47,11 @@ function bkPump() {
       continue;
     }
     bkActive++;
-    api(`/api/books/meta?title=${encodeURIComponent(b.title)}${b.author ? `&author=${encodeURIComponent(b.author)}` : ""}`)
+    const qs = new URLSearchParams({ title: b.title });
+    if (b.author) qs.set("author", b.author);
+    if (b.author_alt) qs.set("alt_author", b.author_alt);
+    if (b.title_alt) qs.set("alt_title", b.title_alt);
+    api(`/api/books/meta?${qs}`)
       .then((r) => (bkMeta.set(id, r.meta), r.meta))
       .catch(() => null)
       .then((m) => done(m))
@@ -80,7 +95,7 @@ function bookCard(b, opts = {}) {
   div.innerHTML = `
     <div class="card-poster"><div class="bk-img">${cover
       ? `<img alt="" decoding="async" src="${escUrl(cover)}">`
-      : `<div class="bk-noimg"><b>${esc(b.title)}</b><span>${esc(b.author || "")}</span></div>`}</div>
+      : bkGenCover(b)}</div>
       ${opts.tag ? `<div class="card-tag">${esc(opts.tag)}</div>` : ""}${progress}
     </div>
     <div class="card-name">${esc(b.title)}</div>
@@ -242,7 +257,7 @@ async function loadBook(r) {
   const readers = b.narrators.length ? b.narrators : m.readers || [];
   wrap.innerHTML = `
     <div class="bk-hero">
-      <div class="bk-cover">${m.cover ? `<img alt="" src="${escUrl(m.cover)}">` : `<div class="bk-noimg"><b>${esc(b.title)}</b><span>${esc(b.author || "")}</span></div>`}</div>
+      <div class="bk-cover">${m.cover ? `<img alt="" src="${escUrl(m.cover)}">` : bkGenCover(b)}</div>
       <div class="bk-info">
         <a href="#/audiobooks" class="bk-crumb">Cărți audio</a>
         ${b.series ? `<div class="bk-series">${esc(b.series)}</div>` : ""}
@@ -384,7 +399,7 @@ async function loadLibrary() {
       const row = document.createElement("div");
       row.className = "torrent-row bk-lib-row";
       row.innerHTML = `
-        <div class="bk-thumb">${x.cover ? `<img alt="" src="${escUrl(x.cover)}">` : svg(BK_ICONS.book, 22)}</div>
+        <div class="bk-thumb">${x.cover ? `<img alt="" src="${escUrl(x.cover)}">` : bkGenCover(x)}</div>
         <div class="t-name"><b>${esc(x.title)}</b>
           <div class="t-meta">${bits.filter(Boolean).map(esc).join(" · ")}</div>
           ${done ? (x.listened_at ? `<div class="lib-bar listened"><i style="width:${(bkListened(x) * 100).toFixed(1)}%"></i></div>` : "")

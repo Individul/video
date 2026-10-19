@@ -336,6 +336,14 @@ def _litres_get(path: str, **params):
     return r.json().get("payload", {}).get("data")
 
 
+def _title_ok(t: str, other: str) -> bool:
+    """Titlurile normalizate se potrivesc: unul începe cu celălalt, sau titlul nostru e conținut
+    în cel lung („Пако Аррайя. Сливовица и кафа”, „Markets of Pain: Opium, … (Unabridged)”)."""
+    if not t or not other:
+        return False
+    return other.startswith(t[:24]) or t.startswith(other[:24]) or (len(t) >= 6 and t in other)
+
+
 def _litres_match(author: str | None, title: str, items: list[dict]) -> dict | None:
     sur = _norm(_surname(author))
     t = _norm(title)
@@ -343,52 +351,78 @@ def _litres_match(author: str | None, title: str, items: list[dict]) -> dict | N
     for it in items:
         x = it.get("instance") or it
         authors = [_norm(p.get("full_name")) for p in x.get("persons") or [] if p.get("role") in (None, "author")]
-        lt = _norm(x.get("title"))
-        if not lt or not t:
-            continue
-        title_ok = lt.startswith(t[:24]) or t.startswith(lt[:24])
-        author_ok = not sur or any(sur in a for a in authors)
-        if title_ok and author_ok:
+        if _title_ok(t, _norm(x.get("title"))) and (not sur or any(sur in a for a in authors)):
             return x
     return None
 
 
-def meta(author: str | None, title: str, full: bool = False) -> dict | None:
-    """Coperta (și cu `full`, descrierea + genurile) cărții, de pe LitRes; None dacă nu e acolo."""
+def _litres_find(author: str | None, title: str) -> dict | None:
+    """Cartea audio de pe LitRes; altfel ediția text (aceeași copertă, de obicei)."""
+    for types in ("audiobook", "text_book"):
+        found = _litres_match(author, title, _litres_get(
+            "search", q=f"{title} {author or ''}".strip()[:200], types=types, limit=8))
+        if found:
+            return {"litres_id": found["id"], "cover": f"https://cdn.litres.ru/pub/c/cover_415/{found['id']}.jpg",
+                    "title": found.get("title"),
+                    "readers": [p["full_name"] for p in found.get("persons") or [] if p.get("role") == "reader"][:6]}
+    return None
+
+
+def _apple_find(author: str | None, title: str) -> dict | None:
+    """Apple Books (iTunes Search, public): bun pentru cărțile în engleză/germană pe care LitRes nu le are."""
+    import requests
+
+    sur, t = _norm(_surname(author)), _norm(title)
+    for media in ("audiobook", "ebook"):
+        r = requests.get("https://itunes.apple.com/search", timeout=15, params={
+            "term": f"{title} {author or ''}".strip()[:150], "media": media, "limit": 8})
+        r.raise_for_status()
+        for x in r.json().get("results") or []:
+            name = re.sub(r"(?i)\s*\((un)?abridged\)\s*$", "", x.get("collectionName") or x.get("trackName") or "")
+            art = x.get("artworkUrl100")
+            if art and _title_ok(t, _norm(name)) and (not sur or sur in _norm(x.get("artistName"))):
+                return {"cover": re.sub(r"/\d+x\d+bb\.", "/600x600bb.", art), "title": name, "readers": [],
+                        "description": _plain(x.get("description")), "source": "apple"}
+    return None
+
+
+_META_VERSION = 2  # lipsurile notate de versiunile vechi se reîncearcă
+
+
+def meta(author: str | None, title: str, full: bool = False,
+         alt_author: str | None = None, alt_title: str | None = None) -> dict | None:
+    """Coperta (și cu `full`, descrierea + genurile) cărții: LitRes (și sub numele alternative,
+    ex. „Великий Гэтсби” pentru „Der große Gatsby”), apoi Apple Books; None dacă nu e nicăieri."""
     k = book_key(author, title)
     store = _meta_store()
     m = store.get(k)
-    if m and m.get("miss") and time.time() - m.get("ts", 0) < _META_MISS_TTL:
-        return None
-    if m and not m.get("miss") and (not full or "description" in m):
+    if m and m.get("miss"):
+        if m.get("v") == _META_VERSION and time.time() - m.get("ts", 0) < _META_MISS_TTL:
+            return None
+        m = None
+    if m and (not full or "description" in m or "litres_id" not in m):
         return m
     try:
-        if not m or m.get("miss"):
-            found = None
-            for types in ("audiobook", None):
-                params = {"q": f"{title} {author or ''}".strip(), "limit": 8}
-                if types:
-                    params["types"] = types
-                found = _litres_match(author, title, _litres_get("search", **params))
-                if found:
-                    break
-            if not found:
+        if not m:
+            m = _litres_find(author, title)
+            if not m and (alt_author or alt_title):
+                m = _litres_find(alt_author or author, alt_title or title)
+            if not m:
+                m = _apple_find(author, title)
+            if not m:
                 with _meta_lock:
-                    store[k] = {"miss": True, "ts": time.time()}
+                    store[k] = {"miss": True, "v": _META_VERSION, "ts": time.time()}
                     _meta_save()
                 return None
-            m = {"litres_id": found["id"], "cover": f"https://cdn.litres.ru/pub/c/cover_415/{found['id']}.jpg",
-                 "title": found.get("title"),
-                 "readers": [p["full_name"] for p in found.get("persons") or [] if p.get("role") == "reader"][:6]}
-        if full:
+        if full and "litres_id" in m:
             d = _litres_get(f"arts/{m['litres_id']}") or {}
             m["description"] = _plain(d.get("html_annotation"))
             m["genres"] = [g["name"] for g in d.get("genres") or [] if g.get("name")][:6]
             rating = d.get("livelib_rated_avg") or (d.get("rating") or {}).get("rated_avg")
             m["rating"] = round(float(rating), 1) if rating else None
             m["written"] = (d.get("date_written_at") or "")[:4] or None
-    except Exception:  # noqa: BLE001 — LitRes indisponibil: fără copertă, nu e o eroare
-        return m if m and not m.get("miss") else None
+    except Exception:  # noqa: BLE001 — sursă indisponibilă acum: fără copertă, se reîncearcă data viitoare
+        return m
     with _meta_lock:
         store[k] = m
         _meta_save()
