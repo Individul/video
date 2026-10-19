@@ -3,89 +3,160 @@
 "use strict";
 
 /* ================= LIVE (Ace Stream) ================= */
+let liveLeague = "all"; // filtrul pe competiție rămâne la întoarcerea pe pagină
+
 async function loadLive() {
   const seq = viewSeq;
   content.innerHTML = `
     <div class="grid-wrap live-page">
-      <div class="view-title">Live</div>
-      <div class="cal-hint">Transmisii în direct prin rețeaua Ace Stream (P2P: cu cât mai mulți spectatori, cu atât mai stabil). Lipește un ID sau un link <code>acestream://…</code> și apasă Pornește; îl poți salva ca să-l ai mereu aici.</div>
-      <form class="ts-form" id="live-form">
-        ${svg("M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm-7.07-2.93 1.41 1.41a8 8 0 0 0 0 11.04l-1.41 1.41a10 10 0 0 1 0-13.86zm14.14 0a10 10 0 0 1 0 13.86l-1.41-1.41a8 8 0 0 0 0-11.04z", 20)}
-        <input id="live-ref" placeholder="acestream://… sau ID de 40 de caractere" autocomplete="off">
-        <input id="live-name" class="live-name" placeholder="Nume (opțional)" autocomplete="off">
-        <button class="btn" type="submit">Pornește</button>
-        <button class="btn ghost" type="button" id="live-save">Salvează</button>
-      </form>
-      <div class="sub-title live-sub">Evenimente azi <span class="live-sub-note">ora Moscovei</span><button class="btn ghost live-refresh" type="button" id="live-ev-refresh">Reîmprospătează</button></div>
-      <div id="live-events" class="sp-list"><div class="status">Se încarcă…</div></div>
-      <div class="sub-title live-sub">Canalele mele</div>
-      <div id="live-list" class="sp-list"><div class="status">Se încarcă…</div></div>
+      <div class="lv-head">
+        <div class="view-title">Live</div>
+        <span class="lv-sub">Ace Stream · ora Moscovei</span>
+        <button class="lv-refresh" type="button" id="live-ev-refresh" title="Reîmprospătează">
+          ${svg("M17.65 6.35A7.96 7.96 0 0 0 12 4a8 8 0 1 0 7.73 10h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4z", 15)}
+          <span id="live-ev-age">se încarcă…</span>
+        </button>
+      </div>
+      <div class="q-filter lv-filter" id="live-filter"></div>
+      <div id="live-events"><div class="status">Se încarcă…</div></div>
+
+      <div class="lv-sec">Canalele mele</div>
+      <div class="lv-mine">
+        <form class="lv-box" id="live-form">
+          <div class="lv-box-title">Link propriu</div>
+          <input id="live-ref" placeholder="acestream://… sau ID de 40 de caractere" autocomplete="off">
+          <input id="live-name" placeholder="Nume (opțional, pentru salvare)" autocomplete="off">
+          <div class="lv-actions">
+            <button class="btn" type="submit">${svg(I.play, 14)} Pornește</button>
+            <button class="btn ghost" type="button" id="live-save">Salvează</button>
+          </div>
+        </form>
+        <div class="lv-box">
+          <div class="lv-box-title">Salvate</div>
+          <div id="live-list"><div class="status">Se încarcă…</div></div>
+        </div>
+      </div>
     </div>`;
   const refEl = $("#live-ref"), nameEl = $("#live-name");
-  const drawEvents = (evs) => {
-    const box = $("#live-events");
+  let events = [];
+  let loadedAt = 0;
+
+  const playBtn = (label = "Pornește") => `<button class="sp-var" data-a="play">${svg(I.play, 13)} <b>${label}</b></button>`;
+  const meta = (ev) => `${flagImg(ev.flag)}${[ev.league, ev.channel].filter(Boolean).map(esc).join(" · ")}`;
+
+  const drawEvents = () => {
+    const box = $("#live-events"), filter = $("#live-filter");
     if (!box) return;
-    if (!evs.length) {
+    if (!events.length) {
+      filter.innerHTML = "";
       box.innerHTML = `<div class="status">Niciun eveniment momentan.</div>`;
       return;
     }
-    box.innerHTML = "";
-    let lastDay = "";
-    evs.forEach((ev) => {
-      if (ev.day !== lastDay) {
-        lastDay = ev.day;
-        const head = document.createElement("div");
-        head.className = "live-day";
-        head.textContent = ev.day;
-        box.appendChild(head);
-      }
-      const row = document.createElement("div");
-      row.className = "sp-row live-row";
-      row.innerHTML = `
-        <div class="live-dot${ev.is_live ? "" : " off"}"></div>
-        <div class="sp-main">
-          <div class="sp-match">${esc(ev.home)} – ${esc(ev.away)}${ev.is_live ? ' <span class="live-badge">LIVE</span>' : ""}</div>
-          <div class="sp-meta">${flagImg(ev.flag)}${[ev.league, ev.channel].filter(Boolean).map(esc).join(" · ")}</div>
-        </div>
-        <div class="sp-vars">
-          <span class="live-when">${esc(ev.when || "")}</span>
-          <button class="sp-var" data-a="play">${svg(I.play, 13)} <b>Pornește</b></button>
-        </div>`;
-      row.querySelector('[data-a="play"]').addEventListener("click", () =>
+    // filtre pe competiție (cele mai frecvente primele)
+    const counts = {};
+    events.forEach((e) => (counts[e.league || "Altele"] = (counts[e.league || "Altele"] || 0) + 1));
+    const leagues = Object.keys(counts).sort((a, b) => counts[b] - counts[a] || a.localeCompare(b));
+    if (liveLeague !== "all" && !counts[liveLeague]) liveLeague = "all";
+    filter.innerHTML = leagues.length > 1
+      ? [["all", `Toate ${events.length}`], ...leagues.map((l) => [l, `${l} ${counts[l]}`])]
+          .map(([v, l]) => `<button data-l="${esc(v)}" class="${v === liveLeague ? "on" : ""}">${esc(l)}</button>`)
+          .join("")
+      : "";
+    filter.querySelectorAll("button").forEach((b) =>
+      b.addEventListener("click", () => {
+        liveLeague = b.dataset.l;
+        drawEvents();
+      })
+    );
+
+    const shown = events.filter((e) => liveLeague === "all" || (e.league || "Altele") === liveLeague);
+    const live = shown.filter((e) => e.is_live);
+    const later = shown.filter((e) => !e.is_live);
+    const onPlay = (el, ev) =>
+      el.querySelector('[data-a="play"]').addEventListener("click", () =>
         playLive({ name: `${ev.home} – ${ev.away}`, url: ev.url })
       );
-      box.appendChild(row);
-    });
+    box.innerHTML = "";
+
+    if (live.length) {
+      box.insertAdjacentHTML("beforeend", `<div class="lv-sec"><span class="lv-dot"></span>În direct acum <small>${live.length}</small></div>`);
+      const tiles = document.createElement("div");
+      tiles.className = "lv-tiles";
+      live.forEach((ev) => {
+        const tile = document.createElement("div");
+        tile.className = "lv-tile";
+        tile.innerHTML = `
+          <span class="lv-badge">LIVE${ev.when ? ` · ${esc(ev.when)}` : ""}</span>
+          <div class="lv-teams">${esc(ev.home)} – ${esc(ev.away)}</div>
+          <div class="lv-meta">${meta(ev)}</div>
+          <div class="lv-tile-foot">${playBtn()}</div>`;
+        onPlay(tile, ev);
+        tiles.appendChild(tile);
+      });
+      box.appendChild(tiles);
+    }
+
+    if (later.length) {
+      box.insertAdjacentHTML("beforeend", `<div class="lv-sec">Urmează <small>${later.length}</small></div>`);
+      let lastDay = "";
+      later.forEach((ev) => {
+        if (ev.day !== lastDay) {
+          lastDay = ev.day;
+          box.insertAdjacentHTML("beforeend", `<div class="lv-day">${esc(ev.day || "")}</div>`);
+        }
+        const row = document.createElement("div");
+        row.className = "lv-row";
+        row.innerHTML = `
+          <span class="lv-time">${esc(ev.when || "—")}</span>
+          <div class="lv-main"><div class="lv-teams">${esc(ev.home)} – ${esc(ev.away)}</div><div class="lv-meta">${meta(ev)}</div></div>
+          ${playBtn()}`;
+        onPlay(row, ev);
+        box.appendChild(row);
+      });
+    }
+    if (!live.length && !later.length) box.innerHTML = `<div class="status">Nimic la această competiție.</div>`;
+  };
+
+  // „actualizat acum 20 s” — se reîmprospătează singur la 65 s
+  const ageEl = () => $("#live-ev-age");
+  const showAge = () => {
+    const el = ageEl();
+    if (!el || !loadedAt) return;
+    const s = Math.round((Date.now() - loadedAt) / 1000);
+    el.textContent = s < 5 ? "actualizat acum" : s < 60 ? `actualizat acum ${s} s` : `actualizat acum ${Math.round(s / 60)} min`;
   };
   const loadEvents = async (silent = false) => {
     const box = $("#live-events");
     if (!box) return;
+    if (!silent && ageEl()) ageEl().textContent = "se încarcă…";
     try {
       const evs = await api("/api/live/events");
-      if (seq === viewSeq) drawEvents(evs);
+      if (seq !== viewSeq) return;
+      events = evs;
+      loadedAt = Date.now();
+      drawEvents();
+      showAge();
     } catch (err) {
       // la reîmprospătarea automată păstrăm lista veche (o eroare de moment nu o șterge)
       if (!silent && seq === viewSeq) box.innerHTML = `<div class="status error">${esc(err.message)}</div>`;
     }
   };
+
   const drawList = (items) => {
     const box = $("#live-list");
     if (!box) return;
     if (!items.length) {
-      box.innerHTML = `<div class="status">Niciun canal salvat. Lipește un ID mai sus și apasă „Salvează”.</div>`;
+      box.innerHTML = `<div class="lv-empty">Niciun canal salvat. Lipește un ID în stânga și apasă „Salvează”.</div>`;
       return;
     }
     box.innerHTML = "";
     items.forEach((c) => {
       const row = document.createElement("div");
-      row.className = "sp-row live-row";
+      row.className = "lv-saved";
       row.innerHTML = `
-        <div class="live-dot"></div>
-        <div class="sp-main"><div class="sp-match">${esc(c.name)}</div><div class="sp-meta">${esc(c.kind === "infohash" ? "infohash" : "acestream")} · ${esc(c.hash.slice(0, 12))}…</div></div>
-        <div class="sp-vars">
-          <button class="sp-var" data-a="play">${svg(I.play, 13)} <b>Pornește</b></button>
-          <button class="sp-var" data-a="del" title="Șterge canalul">${svg(I.trash, 13)}</button>
-        </div>`;
+        <div class="lv-main"><div class="lv-saved-name">${esc(c.name)}</div><div class="lv-meta">${esc(c.kind === "infohash" ? "infohash" : "acestream")} · ${esc(c.hash.slice(0, 12))}…</div></div>
+        <button class="lv-icon" data-a="play" title="Pornește">${svg(I.play, 15)}</button>
+        <button class="lv-icon" data-a="del" title="Șterge canalul">${svg(I.trash, 15)}</button>`;
       row.querySelector('[data-a="play"]').addEventListener("click", () =>
         playLive({ name: c.name, ref: c.kind === "infohash" ? `ih:${c.hash}` : c.hash })
       );
@@ -115,18 +186,18 @@ async function loadLive() {
       toast(err.message, false);
     }
   });
-  $("#live-ev-refresh").addEventListener("click", () => {
-    const box = $("#live-events");
-    if (box) box.innerHTML = `<div class="status">Se încarcă…</div>`;
-    loadEvents();
-  });
+  $("#live-ev-refresh").addEventListener("click", () => loadEvents());
   loadEvents(); // în paralel cu canalele salvate de mai jos
   // auto-reîmprospătat cât timp pagina e deschisă (65 s > cache-ul serverului de 60 s);
-  // timerul se oprește singur când navigăm în altă parte (sec != viewSeq)
+  // timerul se oprește singur când navigăm în altă parte (seq != viewSeq)
   const evTimer = setInterval(() => {
     if (seq !== viewSeq) return clearInterval(evTimer);
     loadEvents(true);
   }, 65000);
+  const ageTimer = setInterval(() => {
+    if (seq !== viewSeq) return clearInterval(ageTimer);
+    showAge();
+  }, 10000);
   try {
     const items = await api("/api/live/channels");
     if (seq === viewSeq) drawList(items);
