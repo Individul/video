@@ -11,6 +11,9 @@ let tvGroup = (() => {
   }
 })();
 let tvData = null; // ultimul /api/iptv (pentru canal anterior/următor în player)
+let tvShowBad = false; // și canalele care nu merg în browser (verificate de server / raportate)
+const tvReport = (id, ok) =>
+  api(`/api/iptv/report/${id}`, { method: "POST", body: JSON.stringify({ ok }) }).catch(() => {});
 
 async function loadTv(opts = {}) {
   const seq = viewSeq;
@@ -29,12 +32,17 @@ async function loadTv(opts = {}) {
   if (!data.configured) return tvSetup();
   tvData = data;
   const fav = new Set(data.favorites);
+  const bad = data.channels.filter((c) => c.state === "bad").length;
+  const visible = (c) => tvShowBad || c.state !== "bad";
+  const pr = data.probe || {};
+  const probeNote = pr.total && pr.done < pr.total
+    ? ` · verific ce merge în browser: ${pr.done}/${pr.total}` : "";
   const wrap = document.createElement("div");
   wrap.className = "grid-wrap tv-page";
   wrap.innerHTML = `
     <div class="tv-head">
       <div class="view-title">TV</div>
-      <span class="tv-sub">${data.channels.length} canale · ${esc(data.source)}</span>
+      <span class="tv-sub">${data.channels.length - (tvShowBad ? 0 : bad)} canale · ${esc(data.source)}${probeNote}</span>
       <div class="tv-actions">
         <button class="btn ghost small" id="tv-refresh" title="Descarcă din nou playlistul">${svg(I.resync, 15)} Actualizează</button>
         <button class="btn ghost small" id="tv-change">Schimbă playlistul</button>
@@ -52,18 +60,22 @@ async function loadTv(opts = {}) {
   $("#tv-form").addEventListener("submit", (e) => e.preventDefault());
 
   const input = $("#tv-q"), groupsBox = $("#tv-groups"), grid = $("#tv-grid");
-  const groups = [["fav", `★ Favorite ${fav.size}`], ["all", `Toate ${data.channels.length}`],
-    ...data.groups.map((g) => [g.name, `${g.name} ${g.count}`])];
+  const vis = data.channels.filter(visible);
+  const counts = {};
+  vis.forEach((c) => (counts[c.group] = (counts[c.group] || 0) + 1));
+  const groups = [["fav", `★ Favorite ${fav.size}`], ["all", `Toate ${vis.length}`],
+    ...data.groups.filter((g) => counts[g.name]).map((g) => [g.name, `${g.name} ${counts[g.name]}`])];
   if (!groups.some(([k]) => k === tvGroup) || (tvGroup === "fav" && !fav.size)) tvGroup = fav.size ? "fav" : "all";
   const drawGroups = () => {
     groupsBox.innerHTML = groups
       .filter(([k]) => k !== "fav" || fav.size)
       .map(([k, l]) => `<button data-g="${esc(k)}" class="${k === tvGroup ? "on" : ""}">${esc(k === "fav" ? `★ Favorite ${fav.size}` : l)}</button>`)
-      .join("");
+      .join("") +
+      (bad ? `<button data-toggle="bad" class="tv-badtoggle${tvShowBad ? " on" : ""}" title="Canale pe care browserul nu le poate reda (HD întrețesut, HEVC) sau care nu răspund">${tvShowBad ? "Ascunde" : "Arată"} și cele care nu merg în browser (${bad})</button>` : "");
   };
   const shown = () => {
     const words = input.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
-    return data.channels.filter((c) =>
+    return data.channels.filter((c) => (visible(c) || fav.has(c.id)) &&
       (words.length ? true : tvGroup === "all" || (tvGroup === "fav" ? fav.has(c.id) : c.group === tvGroup)) &&
       words.every((w) => c.name.toLowerCase().includes(w)));
   };
@@ -73,7 +85,7 @@ async function loadTv(opts = {}) {
     const frag = document.createDocumentFragment();
     list.slice(0, 600).forEach((c) => {
       const tile = document.createElement("div");
-      tile.className = "tv-tile";
+      tile.className = "tv-tile" + (c.state === "bad" ? " tv-bad" : "");
       tile.innerHTML = `
         <div class="tv-logo">${c.logo ? `<img loading="lazy" alt="" src="${escUrl(c.logo)}">` : ""}<span>${esc(c.name.slice(0, 2))}</span></div>
         <div class="tv-name">${esc(c.name)}</div>
@@ -104,6 +116,10 @@ async function loadTv(opts = {}) {
   groupsBox.addEventListener("click", (e) => {
     const b = e.target.closest("button");
     if (!b) return;
+    if (b.dataset.toggle === "bad") {
+      tvShowBad = !tvShowBad;
+      return loadTv();
+    }
     tvGroup = b.dataset.g;
     try {
       localStorage.setItem("tv-group", tvGroup);
@@ -179,6 +195,7 @@ async function playIptv(ch, list, compat = false) {
     if (ps !== playSeq) return;
     // HD întrețesut: serverul nu-l poate converti în timp real -> VLC pe calculator
     const hd = /"hd"\s*:\s*(\d+)/.exec(err.message);
+    if (hd) tvReport(ch.id, false); // nici direct, nici convertit: la tine nu merge
     playerBox.innerHTML = hd
       ? `<div class="cin-status error">Browserul nu poate decoda video-ul acestui canal (${hd[1]}p întrețesut, ca la TV prin satelit), iar serverul nu-l poate converti în timp real.
           <small>Pornește accelerarea grafică în browser (edge://settings/system) sau deschide canalul în VLC.</small>
@@ -259,6 +276,9 @@ async function playIptv(ch, list, compat = false) {
     hls.on(Hls.Events.ERROR, (_, d) => {
       if (!ctx.alive) return;
       // decodorul refuză video-ul (des: canale întrețesute de satelit) -> varianta convertită pe server
+      if (compat && d.type === Hls.ErrorTypes.MEDIA_ERROR && video.error && /DECODE/i.test(video.error.message)) {
+        tvReport(ch.id, false); // nici convertit nu merge
+      }
       if (!compat && d.type === Hls.ErrorTypes.MEDIA_ERROR && video.error && /DECODE/i.test(video.error.message)) {
         console.warn("tv: decodare refuzată, trec la conversie pe server", video.error.message);
         return playIptv(ch, list, true);
@@ -276,6 +296,16 @@ async function playIptv(ch, list, compat = false) {
   } else {
     video.src = sess.playlist; // Safari: HLS nativ
   }
+
+  // a mers 8 s fără erori de decodare -> canalul merge în browserul tău (și dacă e 1080i: toate 1080i)
+  let reported = false;
+  video.addEventListener("timeupdate", () => {
+    if (!reported && ctx.alive && video.currentTime > 8 && !video.error) {
+      reported = true;
+      tvReport(ch.id, true);
+      ch.state = "ok";
+    }
+  });
 
   // canal anterior / următor din lista pe care o vedeai (butoanele ⏮ ⏭ și tastele lor)
   const i = list.findIndex((c) => c.id === ch.id);

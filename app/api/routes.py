@@ -459,6 +459,22 @@ async def iptv_play(cid: str, compat: bool = False) -> dict[str, Any]:
         raise _iptv_err(e) from e
 
 
+class IptvReportBody(BaseModel):
+    ok: bool
+
+
+@router.post("/iptv/report/{cid}")
+async def iptv_report(cid: str, body: IptvReportBody) -> dict[str, str]:
+    """Browserul spune dacă a putut reda canalul: așa se ascund canalele care nu merg la tine."""
+    from app.sources import iptv
+
+    try:
+        await asyncio.to_thread(iptv.report, cid, body.ok)
+    except Exception as e:  # noqa: BLE001
+        raise _iptv_err(e) from e
+    return {"ok": "true"}
+
+
 @router.get("/iptv/m3u/{cid}")
 async def iptv_m3u(cid: str) -> Response:
     """Canalul ca fișier .m3u pentru VLC (rămâne la tine pe calculator)."""

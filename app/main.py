@@ -38,6 +38,20 @@ def _warm_books() -> None:
         pass
 
 
+def _warm_iptv() -> None:
+    """Continuă verificarea canalelor TV (ce merge în browser) dacă playlistul e pus."""
+    import time
+
+    from app.sources import iptv
+
+    time.sleep(30)
+    try:
+        if iptv._load().get("url"):
+            iptv.start_prober()
+    except Exception:  # noqa: BLE001 — doar o optimizare
+        pass
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
@@ -46,6 +60,7 @@ async def lifespan(app: FastAPI):
         threading.Thread(target=_warm_calendar, daemon=True).start()
     if Config.TORZNAB_URL and Config.TORZNAB_API_KEY:
         threading.Thread(target=_warm_books, daemon=True).start()
+    threading.Thread(target=_warm_iptv, daemon=True).start()
     yield
 
 

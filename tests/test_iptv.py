@@ -24,6 +24,9 @@ class Resp:
 @pytest.fixture
 def store(monkeypatch, tmp_path):
     monkeypatch.setattr(iptv, "_FILE", tmp_path / "iptv.json")
+    monkeypatch.setattr(iptv, "_PROBE_FILE", tmp_path / "iptv_probe.json")
+    monkeypatch.setattr(iptv, "_probe", None)
+    monkeypatch.setattr(iptv, "start_prober", lambda: None)
     iptv._cache.clear()
     import requests
 
@@ -114,3 +117,45 @@ def test_compat_refuses_hd_and_m3u_for_vlc(store, monkeypatch):
         iptv.start(cid, compat=True)
     name, body = iptv.m3u_for(cid)
     assert name == "Первый канал HD.m3u" and body.splitlines()[-1].endswith("/101.m3u8")
+
+
+def test_ids_stay_when_provider_rotates_tokens():
+    a = iptv.parse_m3u(M3U)["channels"]
+    b = iptv.parse_m3u(M3U.replace("/user/pass/", "/user/NEWTOKEN/"))["channels"]
+    assert [c["id"] for c in a] == [c["id"] for c in b]
+    dup = iptv.parse_m3u("#EXTM3U\n#EXTINF:-1,X\nhttp://a/1.m3u8\n#EXTINF:-1,X\nhttp://a/2.m3u8\n")["channels"]
+    assert dup[0]["id"] != dup[1]["id"]
+
+
+def test_verdicts_hide_what_the_browser_cannot_play(store):
+    iptv.set_playlist("http://srv.example/pl.m3u")
+    first, match, kino = [c["id"] for c in iptv.overview()["channels"]]
+    st = iptv._probe_store()["channels"]
+    st[first] = {"codec": "h264", "h": 1080, "interlaced": False}
+    st[match] = {"codec": "h264", "h": 1080, "interlaced": True}
+    st[kino] = {"codec": "h264", "h": 576, "interlaced": True}  # SD: serverul îl convertește
+    assert [c["state"] for c in iptv.overview()["channels"]] == ["ok", "bad", "ok"]
+    st[kino] = {"offline": 2}
+    assert iptv.verdict(kino) == "bad"
+    assert iptv.verdict("0" * 12) == "unknown"
+    # accelerarea grafică pornită: un 1080i merge -> toate 1080i devin „ok”
+    other = "f" * 12
+    st[other] = {"codec": "h264", "h": 1080, "interlaced": True}
+    iptv.report(match, True)
+    assert iptv.verdict(match) == "ok" and iptv.verdict(other) == "ok"
+    iptv.report(first, False)
+    assert iptv.verdict(first) == "bad"
+    with pytest.raises(SourceError):
+        iptv.report("../x", True)
+    assert iptv._PROBE_FILE.exists()
+
+
+def test_probe_reads_interlacing(monkeypatch):
+    class Out:
+        stdout = '{"streams":[{"codec_name":"h264","height":1080}],"frames":[{"interlaced_frame":1},{"interlaced_frame":1},{"interlaced_frame":0}]}'
+
+    monkeypatch.setattr(iptv.subprocess, "run", lambda *a, **k: Out())
+    assert iptv.probe_channel("http://x") == {"codec": "h264", "h": 1080, "interlaced": True}
+    Out.stdout = "{}"
+    with pytest.raises(SourceError):
+        iptv.probe_channel("http://x")

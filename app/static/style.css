@@ -1740,3 +1740,6 @@ body.bk-open main#content { padding-bottom: 7rem; }
 .tv-setup input { flex: 1; min-width: 0; background: none; border: none; outline: none; color: var(--text); font-size: 1rem; }
 .cin-status .live-open { display: inline-flex; align-items: center; gap: 0.4rem; margin-top: 0.9rem; text-decoration: none; }
 .cin-status .live-open svg { fill: #111; }
+.tv-groups .tv-badtoggle { border-style: dashed; }
+.tv-tile.tv-bad { opacity: 0.55; }
+.tv-tile.tv-bad::after { content: "nu merge în browser"; position: absolute; left: 1rem; bottom: 2.9rem; font-size: 0.6rem; font-weight: 700; color: var(--danger-text); background: var(--card); border-radius: 5px; padding: 0 5px; }

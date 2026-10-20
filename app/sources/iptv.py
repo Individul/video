@@ -63,8 +63,10 @@ def mask(url: str | None) -> str | None:
 _ATTR = re.compile(r'([\w-]+)="([^"]*)"')
 
 
-def channel_id(name: str, url: str) -> str:
-    return hashlib.sha1(f"{name}|{url}".encode()).hexdigest()[:12]
+def channel_id(name: str, group: str | None, nth: int = 0) -> str:
+    """Stabil între descărcări: furnizorul schimbă tokenul din linkuri, numele și grupul rămân
+    (al doilea canal cu același nume în același grup primește `nth`=1 …)."""
+    return hashlib.sha1(f"{name}|{group or ''}|{nth}".encode()).hexdigest()[:12]
 
 
 def parse_m3u(text: str) -> dict:
@@ -93,10 +95,14 @@ def parse_m3u(text: str) -> dict:
             continue
         elif cur is not None and re.match(r"^(https?|rtmp|rtsp|udp)://", line, re.I):
             cur["url"] = line
-            cur["id"] = channel_id(cur["name"], line)
             cur["group"] = cur["group"] or "Fără grup"
             channels.append(cur)
             cur = None
+    seen: dict[tuple, int] = {}
+    for c in channels:
+        k = (c["name"], c["group"])
+        c["id"] = channel_id(c["name"], c["group"], seen.get(k, 0))
+        seen[k] = seen.get(k, 0) + 1
     return {"epg": epg, "channels": channels}
 
 
@@ -140,6 +146,7 @@ def set_playlist(url: str) -> dict:
         d["url"] = url
         _save(d)
         _cache.update(ts=time.time(), url=url, data=data)
+    start_prober()
     return {"count": len(data["channels"])}
 
 
@@ -150,6 +157,154 @@ def clear_playlist() -> None:
         d.pop("url", None)
         _save(d)
         _cache.clear()
+
+
+# ---------- ce merge în browser (verificare în fundal + ce raportează browserul) ----------
+#
+# Browserul refuză des video-ul întrețesut de satelit (1080i) și HEVC. Serverul deschide fiecare
+# canal 2–3 s (ffprobe: codec, înălțime, cadre întrețesute), câte unul, și se oprește cât timp
+# te uiți la TV (abonamentul are un număr limitat de dispozitive). Ce raportează browserul tău
+# câștigă: „merge” / „refuzat” pe canal, iar un HD întrețesut care merge (accelerare grafică
+# pornită) înseamnă că browserul tău le duce pe toate de felul ăsta.
+
+_PROBE_FILE = ROOT / "iptv_probe.json"
+_PROBE_TTL = 7 * 86400
+_OFFLINE_RETRY = 86400
+_probe_lock = threading.Lock()
+_probe: dict | None = None
+_prober = {"running": False}
+
+
+def _probe_store() -> dict:
+    global _probe
+    if _probe is None:
+        try:
+            _probe = json.loads(_PROBE_FILE.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            _probe = {}
+        _probe.setdefault("channels", {})
+        _probe.setdefault("caps", {})
+    return _probe
+
+
+def _probe_save() -> None:
+    tmp = _PROBE_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(_probe, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(_PROBE_FILE)
+
+
+def probe_channel(url: str) -> dict:
+    """{"codec", "h", "interlaced"} din primele cadre; ridică dacă fluxul nu răspunde."""
+    out = subprocess.run(
+        ["ffprobe", "-v", "quiet", "-user_agent", Config.USER_AGENT, "-select_streams", "v:0",
+         "-read_intervals", "%+#12", "-show_entries", "stream=codec_name,height:frame=interlaced_frame",
+         "-of", "json", url],
+        capture_output=True, text=True, timeout=30,
+    ).stdout
+    d = json.loads(out or "{}")
+    streams = d.get("streams") or []
+    if not streams:
+        raise SourceError("fără video")
+    frames = [f.get("interlaced_frame") for f in d.get("frames") or []]
+    return {"codec": streams[0].get("codec_name"), "h": streams[0].get("height"),
+            "interlaced": bool(frames) and sum(1 for f in frames if f) * 2 >= len(frames)}
+
+
+def _kind(info: dict) -> str | None:
+    """Clasa de format care contează pentru browser: „hd_i” (HD întrețesut), „hevc” sau None."""
+    if (info.get("codec") or "").lower() in ("hevc", "h265"):
+        return "hevc"
+    if info.get("interlaced") and (info.get("h") or 0) > COMPAT_MAX_HEIGHT:
+        return "hd_i"
+    return None
+
+
+def verdict(cid: str) -> str:
+    """„ok” (merge sau merge prin conversie SD), „bad” (nu merge în browser / nu răspunde), „unknown”."""
+    st = _probe_store()
+    info = st["channels"].get(cid) or {}
+    if info.get("seen") in ("ok", "bad"):
+        return info["seen"]
+    if info.get("offline", 0) >= 2:
+        return "bad"
+    if "codec" not in info:
+        return "unknown"
+    kind = _kind(info)
+    if kind:
+        return "ok" if st["caps"].get(kind) == "ok" else "bad"
+    return "ok"
+
+
+def report(cid: str, ok: bool) -> None:
+    """Ce a văzut browserul: canalul a mers (ok) sau decodorul l-a refuzat."""
+    if not re.match(r"^[0-9a-f]{12}$", cid or ""):
+        raise SourceError("Canal invalid")
+    with _probe_lock:
+        st = _probe_store()
+        info = st["channels"].setdefault(cid, {})
+        info["seen"] = "ok" if ok else "bad"
+        info.pop("offline", None)
+        kind = _kind(info)
+        if kind:  # browserul tău duce (sau nu) toate canalele de felul ăsta
+            st["caps"][kind] = "ok" if ok else "bad"
+        _probe_save()
+
+
+def start_prober() -> None:
+    """Pornește (o dată) verificarea în fundal a canalelor încă neverificate."""
+    with _probe_lock:
+        if _prober["running"]:
+            return
+        _prober["running"] = True
+    threading.Thread(target=_prober_loop, name="iptv-probe", daemon=True).start()
+
+
+def _prober_loop() -> None:
+    try:
+        while True:
+            try:
+                chans = _playlist()["channels"]
+            except SourceError:
+                return
+            now = time.time()
+            st = _probe_store()
+            todo = [c for c in chans
+                    if (now - (st["channels"].get(c["id"]) or {}).get("ts", 0))
+                    > (_OFFLINE_RETRY if (st["channels"].get(c["id"]) or {}).get("offline") else _PROBE_TTL)]
+            _prober["total"], _prober["todo"] = len(chans), len(todo)
+            if not todo:
+                return
+            for c in todo:
+                while _relay.get("proc") is not None and _relay["proc"].poll() is None:
+                    time.sleep(10)  # te uiți la TV: nu ocupăm încă un „dispozitiv”
+                try:
+                    info = probe_channel(c["url"])
+                except Exception:  # noqa: BLE001 — canal căzut / refuzat
+                    info = None
+                with _probe_lock:
+                    rec = _probe_store()["channels"].setdefault(c["id"], {})
+                    rec["ts"] = time.time()
+                    if info:
+                        rec.update(info)
+                        rec.pop("offline", None)
+                    else:
+                        rec["offline"] = rec.get("offline", 0) + 1
+                    _prober["todo"] = max(0, _prober.get("todo", 1) - 1)
+                    _probe_save()
+                time.sleep(0.5)
+    finally:
+        _prober["running"] = False
+
+
+def probe_progress() -> dict:
+    total = _prober.get("total")
+    st = _probe_store()["channels"]
+    try:
+        ids = [c["id"] for c in _playlist()["channels"]]
+    except SourceError:
+        ids = []
+    done = sum(1 for i in ids if "codec" in (st.get(i) or {}) or (st.get(i) or {}).get("offline"))
+    return {"running": _prober["running"], "done": done, "total": total or len(ids)}
 
 
 def overview(refresh: bool = False) -> dict:
@@ -164,7 +319,9 @@ def overview(refresh: bool = False) -> dict:
     return {
         "configured": True,
         "source": mask(d["url"]),
-        "channels": [{k: c[k] for k in ("id", "name", "group", "logo", "catchup_days")} for c in data["channels"]],
+        "channels": [{**{k: c[k] for k in ("id", "name", "group", "logo", "catchup_days")}, "state": verdict(c["id"])}
+                     for c in data["channels"]],
+        "probe": probe_progress(),
         "groups": [{"name": g, "count": n} for g, n in groups.items()],  # ordinea din playlist
         "favorites": [f for f in d.get("favorites", []) if isinstance(f, str)],
     }
