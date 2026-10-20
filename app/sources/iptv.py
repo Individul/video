@@ -198,6 +198,9 @@ def relay_cmd(src: str, out_dir: Path) -> list[str]:
         "ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin",
         *(["-user_agent", Config.USER_AGENT, "-reconnect", "1", "-reconnect_streamed", "1",
            "-reconnect_on_network_error", "1", "-reconnect_delay_max", "5"] if http else []),
+        # cel mult puțin peste timp real (după un start rapid de 8 s): canalele live vin oricum
+        # în ritmul lor, iar filmele (VOD) din playlist nu mai fug înaintea player-ului
+        "-readrate", "1.05", "-readrate_initial_burst", "8",
         "-i", src,
         "-map", "0:v:0?", "-map", "0:a:0?",
         "-c:v", "copy",

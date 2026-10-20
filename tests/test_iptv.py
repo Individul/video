@@ -79,6 +79,7 @@ def test_favorites_toggle(store):
 def test_relay_cmd_and_files(tmp_path):
     cmd = iptv.relay_cmd("http://srv/1.ts", tmp_path)
     assert "-reconnect" in cmd and cmd[cmd.index("-c:v") + 1] == "copy" and cmd[cmd.index("-c:a") + 1] == "aac"
+    assert cmd.index("-readrate") < cmd.index("-i")  # opțiune de intrare
     assert "-reconnect" not in iptv.relay_cmd("udp://239.0.0.1:1234", tmp_path)
     assert iptv.relay_file("0123456789abcdef", "../x") is None
     assert iptv.relay_file("nope", "index.m3u8") is None
