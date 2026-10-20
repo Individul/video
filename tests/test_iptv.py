@@ -138,6 +138,9 @@ def test_verdicts_hide_what_the_browser_cannot_play(store):
     st[kino] = {"offline": 2}
     assert iptv.verdict(kino) == "bad"
     assert iptv.verdict("0" * 12) == "unknown"
+    st["a" * 12] = {"codec": "mpeg2video", "h": 1080, "interlaced": True}
+    st["b" * 12] = {"codec": "mpeg2video", "h": 576, "interlaced": True}  # SD: convertit pe server
+    assert iptv.verdict("a" * 12) == "bad" and iptv.verdict("b" * 12) == "ok"
     # accelerarea grafică pornită: un 1080i merge -> toate 1080i devin „ok”
     other = "f" * 12
     st[other] = {"codec": "h264", "h": 1080, "interlaced": True}

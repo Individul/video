@@ -212,8 +212,11 @@ def probe_channel(url: str) -> dict:
 
 def _kind(info: dict) -> str | None:
     """Clasa de format care contează pentru browser: „hd_i” (HD întrețesut), „hevc” sau None."""
-    if (info.get("codec") or "").lower() in ("hevc", "h265"):
+    codec = (info.get("codec") or "").lower()
+    if codec in ("hevc", "h265"):
         return "hevc"
+    if codec in ("mpeg2video", "mpeg1video") and (info.get("h") or 0) > COMPAT_MAX_HEIGHT:
+        return "mpeg2_hd"  # niciun browser nu decodează MPEG-2, iar HD-ul nu-l putem converti
     if info.get("interlaced") and (info.get("h") or 0) > COMPAT_MAX_HEIGHT:
         return "hd_i"
     return None
