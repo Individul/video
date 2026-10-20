@@ -217,6 +217,8 @@ async def torrents_search(
     alt: str | None = Query(None, max_length=200),
 ) -> list[dict[str, Any]]:
     """Cautare magneți; `alt` = numele alternativ (rusesc ↔ original) pentru fallback."""
+    if alt and alt.strip() and not torrent_service.searchable(q) and torrent_service.searchable(alt):
+        q, alt = alt.strip(), q  # titlu original coreean/japonez/chinezesc: trackerele caută după numele rusesc
     query = f"{q} {year}" if year else q
     try:
         return await torrent_service.search_torrents(query)

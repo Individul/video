@@ -633,7 +633,7 @@ async def search_torrents(query: str, limit: int | None = None) -> list[dict]:
             results = await asyncio.to_thread(_search_provider_btdig, query) or []
         except Exception:  # noqa: BLE001 — btdig e best-effort
             results = []
-    results = _filter_media(results)
+    results = relevant(_filter_media(results), query)
     if not results:
         raise SourceError(f"Niciun rezultat de torrent pentru '{query}'")
 
@@ -652,6 +652,20 @@ async def search_torrents(query: str, limit: int | None = None) -> list[dict]:
     annotated = annotated[:limit]
     _SEARCH_CACHE[cache_key] = (time.monotonic(), annotated)
     return annotated
+
+
+def searchable(text: str | None) -> bool:
+    """Are litere latine sau chirilice? Rutor ignoră restul („호프 2026” devine „2026”)."""
+    return bool(re.search(r"[a-zA-Zа-яА-ЯёЁ]", text or ""))
+
+
+def relevant(results: list[dict], query: str) -> list[dict]:
+    """Doar rezultatele care conțin măcar un cuvânt din căutare (în afară de an): o sursă care
+    nu înțelege căutarea întoarce ultimele apariții, iar fără filtru le-am lua drept versiuni."""
+    words = [w for w in re.findall(r"\w+", query.lower().replace("ё", "е")) if len(w) >= 2 and not w.isdigit()]
+    if not words:
+        return results
+    return [r for r in results if any(w in (r.get("name") or "").lower().replace("ё", "е") for w in words)]
 
 
 def _filter_media(results: list[dict]) -> list[dict]:
