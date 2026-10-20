@@ -445,16 +445,50 @@ async def iptv_favorite(cid: str) -> dict[str, Any]:
 
 
 @router.post("/iptv/play/{cid}")
-async def iptv_play(cid: str, compat: bool = False) -> dict[str, Any]:
-    """`compat=1`: video convertit pe server, pentru canalele pe care browserul nu le poate decoda."""
+async def iptv_play(cid: str, compat: bool = False, start: int | None = None) -> dict[str, Any]:
+    """`compat=1`: video convertit pe server, pentru canalele pe care browserul nu le poate decoda;
+    `start`: din arhivă, de la acest moment (timestamp Unix)."""
     from app.sources import iptv
 
     try:
-        return await asyncio.to_thread(iptv.start, cid, compat)
+        return await asyncio.to_thread(iptv.start, cid, compat, start)
     except SourceError as e:
         if str(e).startswith("hd:"):
             raise HTTPException(status_code=422, detail={"hd": int(str(e)[3:])}) from e
         raise _iptv_err(e) from e
+    except Exception as e:  # noqa: BLE001
+        raise _iptv_err(e) from e
+
+
+@router.get("/iptv/now")
+async def iptv_now() -> dict[str, Any]:
+    """„Acum / Urmează” pentru toate canalele cu ghid TV."""
+    from app.sources import iptv
+
+    try:
+        return await asyncio.to_thread(iptv.epg_now)
+    except Exception as e:  # noqa: BLE001
+        raise _iptv_err(e) from e
+
+
+@router.get("/iptv/guide/{cid}")
+async def iptv_guide(cid: str) -> dict[str, Any]:
+    """Programul canalului: din arhiva furnizorului până la +36 h."""
+    from app.sources import iptv
+
+    try:
+        return await asyncio.to_thread(iptv.epg_guide, cid)
+    except Exception as e:  # noqa: BLE001
+        raise _iptv_err(e) from e
+
+
+@router.get("/iptv/search")
+async def iptv_search(q: str = Query(min_length=2, max_length=100)) -> dict[str, Any]:
+    """Caută în program: ce e acum, ce urmează și ce e în arhivă (ex. un meci, un film)."""
+    from app.sources import iptv
+
+    try:
+        return await asyncio.to_thread(iptv.epg_search, q)
     except Exception as e:  # noqa: BLE001
         raise _iptv_err(e) from e
 

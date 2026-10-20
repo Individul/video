@@ -48,6 +48,9 @@ def _warm_iptv() -> None:
     try:
         if iptv._load().get("url"):
             iptv.start_prober()
+            from app.sources import epg
+
+            epg.refresh()
     except Exception:  # noqa: BLE001 — doar o optimizare
         pass
 

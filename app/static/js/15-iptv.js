@@ -12,6 +12,18 @@ let tvGroup = (() => {
 })();
 let tvData = null; // ultimul /api/iptv (pentru canal anterior/următor în player)
 let tvShowBad = false; // și canalele care nu merg în browser (verificate de server / raportate)
+const TV_ICON_GUIDE = "M3 4h18v2H3zm0 5h12v2H3zm0 5h18v2H3zm0 5h12v2H3z";
+let tvNow = {}; // id -> [titlu acum, start, stop, titlu următor, start următor]
+const tvHm = (ts) => new Date(ts * 1000).toLocaleTimeString("ro-RO", { hour: "2-digit", minute: "2-digit" });
+const tvDay = (ts) => {
+  const d = new Date(ts * 1000), today = new Date();
+  const diff = Math.round((new Date(d.toDateString()) - new Date(today.toDateString())) / 864e5);
+  if (diff === 0) return "Azi";
+  if (diff === -1) return "Ieri";
+  if (diff === 1) return "Mâine";
+  const s = d.toLocaleDateString("ro-RO", { weekday: "long", day: "numeric", month: "long" });
+  return s[0].toUpperCase() + s.slice(1);
+};
 const tvReport = (id, ok) =>
   api(`/api/iptv/report/${id}`, { method: "POST", body: JSON.stringify({ ok }) }).catch(() => {});
 
@@ -52,6 +64,7 @@ async function loadTv(opts = {}) {
       <input id="tv-q" type="search" placeholder="Caută canal (ex. Матч, Discovery, Кино)…" autocomplete="off">
     </form>
     <div class="q-filter tv-groups" id="tv-groups"></div>
+    <div id="tv-epg"></div>
     <div class="tv-grid" id="tv-grid"></div>`;
   content.innerHTML = "";
   content.appendChild(wrap);
@@ -89,7 +102,9 @@ async function loadTv(opts = {}) {
       tile.innerHTML = `
         <div class="tv-logo">${c.logo ? `<img loading="lazy" alt="" src="${escUrl(c.logo)}">` : ""}<span>${esc(c.name.slice(0, 2))}</span></div>
         <div class="tv-name">${esc(c.name)}</div>
+        <div class="tv-now" data-id="${c.id}"></div>
         ${c.catchup_days ? `<div class="tv-arch" title="Arhivă ${c.catchup_days} zile la furnizor">${c.catchup_days}z</div>` : ""}
+        <button class="tv-guide-btn" title="Programul canalului${c.catchup_days ? " și arhiva" : ""}">${svg(TV_ICON_GUIDE, 15)}</button>
         <button class="tv-fav${fav.has(c.id) ? " on" : ""}" title="Favorit">${svg(TV_ICON_STAR, 16)}</button>`;
       const img = tile.querySelector("img");
       if (img) img.addEventListener("error", () => img.remove()); // logo lipsă: rămân inițialele
@@ -107,10 +122,15 @@ async function loadTv(opts = {}) {
           toast(err.message, false);
         }
       });
+      tile.querySelector(".tv-guide-btn").addEventListener("click", (e) => {
+        e.stopPropagation();
+        tvGuide(c, list);
+      });
       makeActivatable(tile, () => playIptv(c, list), c.name);
       frag.appendChild(tile);
     });
     grid.appendChild(frag);
+    paintNow();
     if (list.length > 600) grid.insertAdjacentHTML("beforeend", `<div class="status">… încă ${list.length - 600} canale — caută după nume.</div>`);
   };
   groupsBox.addEventListener("click", (e) => {
@@ -128,7 +148,75 @@ async function loadTv(opts = {}) {
     drawGroups();
     draw();
   });
-  input.addEventListener("input", draw);
+  // „Acum” pe carduri: din ghidul TV, reîmprospătat la 2 minute cât stai pe pagină
+  const paintNow = () => {
+    const t = Date.now() / 1000;
+    grid.querySelectorAll(".tv-now").forEach((el) => {
+      const n = tvNow[el.dataset.id];
+      if (!n || !n[0]) return (el.innerHTML = "");
+      const pct = Math.min(100, Math.max(0, ((t - n[1]) / (n[2] - n[1])) * 100));
+      el.title = n[3] ? `Urmează la ${tvHm(n[4])}: ${n[3]}` : "";
+      el.innerHTML = `<span>${esc(n[0])}</span><i style="width:${pct.toFixed(1)}%"></i>`;
+    });
+  };
+  const loadNow = async () => {
+    if (seq !== viewSeq) return;
+    try {
+      tvNow = (await api("/api/iptv/now")).now || {};
+      if (seq === viewSeq) paintNow();
+    } catch (_) {}
+    setTimeout(loadNow, 120000);
+  };
+  loadNow();
+
+  // căutarea caută și în program (meciuri, filme): acum, urmează, arhivă
+  const epgBox = $("#tv-epg");
+  let epgTimer = null, epgSeq = 0;
+  const searchEpg = () => {
+    clearTimeout(epgTimer);
+    const q = input.value.trim();
+    if (q.length < 3) return (epgBox.innerHTML = "");
+    epgTimer = setTimeout(async () => {
+      const my = ++epgSeq;
+      epgBox.innerHTML = `<div class="ts-note">Caut în program…</div>`;
+      let res;
+      try {
+        res = await api(`/api/iptv/search?q=${encodeURIComponent(q)}`);
+      } catch (err) {
+        if (my === epgSeq) epgBox.innerHTML = "";
+        return;
+      }
+      if (my !== epgSeq || seq !== viewSeq) return;
+      if (!res.results.length) {
+        epgBox.innerHTML = res.epg && !res.epg.loaded ? `<div class="ts-note">Ghidul TV se încarcă (prima dată ~1 minut)…</div>` : "";
+        return;
+      }
+      const byId = new Map(data.channels.map((c) => [c.id, c]));
+      epgBox.innerHTML = `<div class="cal-day-head">În program<span>${res.results.length}</span></div><div class="tv-epg-list"></div>`;
+      const box = epgBox.querySelector(".tv-epg-list");
+      res.results.forEach((r) => {
+        const ch = byId.get(r.cid);
+        if (!ch) return;
+        const row = document.createElement("div");
+        row.className = "tv-epg-row" + (r.live ? " live" : r.archive ? " arch" : " soon");
+        const when = r.live ? `<b class="tv-badge live">ACUM</b>` : r.archive
+          ? `<b class="tv-badge arch">▶ ARHIVĂ</b> ${esc(tvDay(r.start))} ${tvHm(r.start)}`
+          : `${esc(tvDay(r.start))} ${tvHm(r.start)}`;
+        row.innerHTML = `<div class="tv-epg-when">${when}</div>
+          <div class="tv-epg-title">${esc(r.title)}<small>${esc(r.channel)} · ${tvHm(r.start)}–${tvHm(r.stop)}</small></div>`;
+        makeActivatable(row, () => {
+          if (r.archive) return playIptv(ch, null, false, r.start);
+          if (r.live) return playIptv(ch);
+          toast(`Începe ${tvDay(r.start).toLowerCase()} la ${tvHm(r.start)} pe ${r.channel}`);
+        }, r.title);
+        box.appendChild(row);
+      });
+    }, 400);
+  };
+  input.addEventListener("input", () => {
+    draw();
+    searchEpg();
+  });
   drawGroups();
   draw();
 }
@@ -176,12 +264,60 @@ function tvSetup(current) {
   });
 }
 
+/* ---------- programul canalului (panou în dreapta; trecutul din arhivă se poate reda) ---------- */
+async function tvGuide(ch, list) {
+  document.querySelector(".tv-guide")?.remove();
+  const panel = document.createElement("div");
+  panel.className = "tv-guide";
+  panel.innerHTML = `<div class="tv-guide-head"><b>${esc(ch.name)}</b><button class="tv-guide-x" title="Închide">${svg(I.close, 18)}</button></div>
+    <div class="tv-guide-body"><div class="status">Se încarcă programul…</div></div>`;
+  document.body.appendChild(panel);
+  const close = () => panel.remove();
+  panel.querySelector(".tv-guide-x").addEventListener("click", close);
+  const onKey = (e) => e.key === "Escape" && (close(), document.removeEventListener("keydown", onKey));
+  document.addEventListener("keydown", onKey);
+  let g;
+  try {
+    g = await api(`/api/iptv/guide/${ch.id}`);
+  } catch (err) {
+    panel.querySelector(".tv-guide-body").innerHTML = `<div class="status error">${esc(err.message)}</div>`;
+    return;
+  }
+  const body = panel.querySelector(".tv-guide-body");
+  if (!g.programmes.length) {
+    body.innerHTML = `<div class="status">Nu există program pentru canalul ăsta${g.archive_days ? "" : ""}.</div>`;
+    return;
+  }
+  body.innerHTML = g.archive_days ? `<div class="ts-note">Arhivă ${g.archive_days} zile: emisiunile trecute cu ▶ pornesc de la început.</div>` : "";
+  let day = null, liveRow = null;
+  g.programmes.forEach((p) => {
+    const d = tvDay(p.start);
+    if (d !== day) {
+      day = d;
+      body.insertAdjacentHTML("beforeend", `<div class="tv-guide-day">${esc(d)}</div>`);
+    }
+    const row = document.createElement("div");
+    row.className = "tv-guide-row" + (p.live ? " live" : p.archive ? " arch" : p.stop < Date.now() / 1000 ? " past" : "");
+    row.innerHTML = `<span class="tv-guide-t">${tvHm(p.start)}</span><span class="tv-guide-title">${esc(p.title)}</span>
+      ${p.live ? `<b class="tv-badge live">ACUM</b>` : p.archive ? `<b class="tv-badge arch">▶</b>` : ""}`;
+    if (p.live || p.archive) {
+      makeActivatable(row, () => {
+        close();
+        p.live ? playIptv(ch, list) : playIptv(ch, list, false, p.start);
+      }, p.title);
+    }
+    if (p.live) liveRow = row;
+    body.appendChild(row);
+  });
+  (liveRow || body.firstChild)?.scrollIntoView({ block: "center" });
+}
+
 /* ---------- player ---------- */
-async function playIptv(ch, list, compat = false) {
+async function playIptv(ch, list, compat = false, at = null) {
   list = list && list.length ? list : (tvData ? tvData.channels : [ch]);
   enterCinema({ id: null, name: ch.name, type: "movie" });
   cinema.classList.add("cin-live");
-  $("#cin-sub").textContent = `TV · ${ch.group || ""}`;
+  $("#cin-sub").textContent = at ? `TV · arhivă ${tvDay(at).toLowerCase()} ${tvHm(at)}` : `TV · ${ch.group || ""}`;
   const ps = beginPlay();
   const playerBox = $("#player");
   if (!playerBox) return;
@@ -190,7 +326,10 @@ async function playIptv(ch, list, compat = false) {
     : `<div class="cin-status">Pornesc canalul…<small>serverul se conectează la furnizor (3–10 s)</small></div>`;
   let sess;
   try {
-    sess = await api(`/api/iptv/play/${ch.id}${compat ? "?compat=1" : ""}`, { method: "POST" });
+    const qs = new URLSearchParams();
+    if (compat) qs.set("compat", "1");
+    if (at) qs.set("start", String(at));
+    sess = await api(`/api/iptv/play/${ch.id}${qs.toString() ? `?${qs}` : ""}`, { method: "POST" });
   } catch (err) {
     if (ps !== playSeq) return;
     // HD întrețesut: serverul nu-l poate converti în timp real -> VLC pe calculator
@@ -242,7 +381,9 @@ async function playIptv(ch, list, compat = false) {
   playerBox.querySelector(".cin-video").classList.add("is-live");
   const video = playerBox.querySelector("#video");
   $("#buffer").classList.remove("hidden");
-  $("#cin-mini").innerHTML = `<span class="dot-ok"></span>TV · ${esc(ch.name)}${compat ? " · convertit pe server" : ""}`;
+  $("#cin-mini").innerHTML = `<span class="dot-ok"></span>TV · ${esc(ch.name)}${at ? " · arhivă" : ""}${compat ? " · convertit pe server" : ""}
+    <button class="tv-mini-guide" title="Programul canalului">${svg(TV_ICON_GUIDE, 14)} Program</button>`;
+  $("#cin-mini .tv-mini-guide").addEventListener("click", () => tvGuide(ch, list));
 
   let hls = null;
   const statTimer = setInterval(async () => {
@@ -281,7 +422,7 @@ async function playIptv(ch, list, compat = false) {
       }
       if (!compat && d.type === Hls.ErrorTypes.MEDIA_ERROR && video.error && /DECODE/i.test(video.error.message)) {
         console.warn("tv: decodare refuzată, trec la conversie pe server", video.error.message);
-        return playIptv(ch, list, true);
+        return playIptv(ch, list, true, at);
       }
       if (!d.fatal) return;
       if (d.type === Hls.ErrorTypes.MEDIA_ERROR && ++mediaFails <= 2) return hls.recoverMediaError();
@@ -309,10 +450,10 @@ async function playIptv(ch, list, compat = false) {
 
   // canal anterior / următor din lista pe care o vedeai (butoanele ⏮ ⏭ și tastele lor)
   const i = list.findIndex((c) => c.id === ch.id);
-  const at = (k) => list[(i + k + list.length) % list.length];
+  const nth = (k) => list[(i + k + list.length) % list.length];
   enhanceVideo(video, {
     ctx,
-    prev: list.length > 1 ? () => playIptv(at(-1), list) : null,
-    next: list.length > 1 ? () => playIptv(at(1), list) : null,
+    prev: list.length > 1 ? () => playIptv(nth(-1), list) : null,
+    next: list.length > 1 ? () => playIptv(nth(1), list) : null,
   });
 }

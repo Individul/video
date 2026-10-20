@@ -1743,3 +1743,52 @@ body.bk-open main#content { padding-bottom: 7rem; }
 .tv-groups .tv-badtoggle { border-style: dashed; }
 .tv-tile.tv-bad { opacity: 0.55; }
 .tv-tile.tv-bad::after { content: "nu merge în browser"; position: absolute; left: 1rem; bottom: 2.9rem; font-size: 0.6rem; font-weight: 700; color: var(--danger-text); background: var(--card); border-radius: 5px; padding: 0 5px; }
+
+/* ghidul TV: acum pe carduri, căutare în program, panoul cu programul */
+.tv-now { min-height: 1.6em; font-size: 0.7rem; color: var(--sub); line-height: 1.25; }
+.tv-now span { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+.tv-now i { display: block; height: 2px; margin-top: 4px; border-radius: 1px; background: var(--accent); }
+.tv-now:empty { min-height: 0; }
+.tv-guide-btn {
+  position: absolute; right: 0.9rem; top: calc(0.9rem + 32px); width: 28px; height: 28px; border-radius: 50%;
+  border: none; background: rgba(0, 0, 0, 0.45); color: #fff; cursor: pointer; opacity: 0;
+  display: flex; align-items: center; justify-content: center; transition: opacity 0.15s;
+}
+.tv-guide-btn svg { fill: currentColor; }
+.tv-tile:hover .tv-guide-btn { opacity: 1; }
+#tv-epg .cal-day-head { margin-top: 0.4rem; }
+.tv-epg-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 1.4rem; }
+.tv-epg-row {
+  display: flex; align-items: center; gap: 1rem; padding: 0.55rem 0.8rem; border-radius: 10px;
+  background: var(--card); cursor: pointer;
+}
+.tv-epg-row:hover { background: var(--card-hover); }
+.tv-epg-row.soon { cursor: default; opacity: 0.8; }
+.tv-epg-when { flex: 0 0 170px; font-size: 0.78rem; color: var(--sub); }
+.tv-epg-title { flex: 1; min-width: 0; font-size: 0.9rem; }
+.tv-epg-title small { display: block; color: var(--sub); font-size: 0.74rem; margin-top: 2px; }
+.tv-badge { font-size: 0.62rem; font-weight: 800; border-radius: 5px; padding: 1px 6px; letter-spacing: 0.3px; }
+.tv-badge.live { background: var(--danger); color: #fff; }
+.tv-badge.arch { background: rgba(var(--ink), 0.1); color: var(--text); }
+.tv-guide {
+  position: fixed; z-index: 120; top: 0; right: 0; bottom: 0; width: min(420px, 100vw);
+  background: var(--bg-content); border-left: 1px solid var(--line); box-shadow: -10px 0 40px rgba(0, 0, 0, 0.35);
+  display: flex; flex-direction: column;
+}
+.tv-guide-head { display: flex; align-items: center; justify-content: space-between; padding: 1rem 1.1rem; border-bottom: 1px solid var(--line); }
+.tv-guide-x { border: none; background: none; color: var(--text); cursor: pointer; }
+.tv-guide-x svg { fill: currentColor; }
+.tv-guide-body { overflow-y: auto; padding: 0.4rem 0.8rem 2rem; }
+.tv-guide-day { position: sticky; top: 0; background: var(--bg-content); padding: 0.8rem 0.3rem 0.4rem; font-weight: 700; font-size: 0.85rem; color: var(--sub); }
+.tv-guide-row { display: flex; align-items: baseline; gap: 0.8rem; padding: 0.45rem 0.4rem; border-radius: 8px; font-size: 0.88rem; }
+.tv-guide-row.past { opacity: 0.45; }
+.tv-guide-row.arch, .tv-guide-row.live { cursor: pointer; }
+.tv-guide-row.arch:hover, .tv-guide-row.live:hover { background: var(--card); }
+.tv-guide-row.live { background: rgba(255, 226, 22, 0.1); }
+.tv-guide-t { flex: 0 0 3em; color: var(--sub); font-variant-numeric: tabular-nums; }
+.tv-guide-title { flex: 1; min-width: 0; }
+.tv-mini-guide {
+  margin-left: 0.8rem; display: inline-flex; align-items: center; gap: 4px; border: 1px solid rgba(255, 255, 255, 0.3);
+  background: none; color: inherit; border-radius: 999px; padding: 1px 9px; font-size: 0.75rem; cursor: pointer;
+}
+.tv-mini-guide svg { fill: currentColor; }

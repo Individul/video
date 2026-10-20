@@ -147,6 +147,9 @@ def set_playlist(url: str) -> dict:
         _save(d)
         _cache.update(ts=time.time(), url=url, data=data)
     start_prober()
+    from app.sources import epg
+
+    threading.Thread(target=epg.refresh, kwargs={"force": True}, name="epg", daemon=True).start()
     return {"count": len(data["channels"])}
 
 
@@ -310,6 +313,36 @@ def probe_progress() -> dict:
     return {"running": _prober["running"], "done": done, "total": total or len(ids)}
 
 
+def epg_now() -> dict:
+    """{id canal: [titlu acum, start, stop, titlu următor, start următor]} pentru canalele cu ghid."""
+    from app.sources import epg
+
+    epg.ensure_fresh()
+    out = {}
+    for c in _playlist()["channels"]:
+        nn = epg.now_next(c.get("tvg_id"))
+        if nn:
+            cur, nxt = nn
+            out[c["id"]] = [*(cur or (None, None, None)), *(nxt or (None, None))]
+    return {"now": out, "epg": epg.status()}
+
+
+def epg_guide(cid: str) -> dict:
+    from app.sources import epg
+
+    epg.ensure_fresh()
+    c = _channel(cid)
+    return {"id": cid, "name": c["name"], "logo": c.get("logo"), "archive_days": c.get("catchup_days") or 0,
+            "programmes": epg.guide(c.get("tvg_id"), c.get("catchup_days"))}
+
+
+def epg_search(q: str) -> dict:
+    from app.sources import epg
+
+    epg.ensure_fresh()
+    return {"results": epg.search(q, _playlist()["channels"]), "epg": epg.status()}
+
+
 def overview(refresh: bool = False) -> dict:
     """Ce vede interfața: canalele fără adresele lor, grupurile, favoritele."""
     d = _load()
@@ -403,12 +436,26 @@ def probe_height(url: str) -> int | None:
         return None
 
 
-def start(cid: str, compat: bool = False) -> dict:
+def archive_url(url: str, start: int) -> str:
+    """Arhiva Flussonic a furnizorului: „…/CANAL/mpegts?token=X” -> „…/CANAL/timeshift_abs-START.m3u8?token=X”
+    (pornește de la începutul emisiunii și merge mai departe ca la TV)."""
+    base, _, query = url.partition("?")
+    return f"{base.rsplit('/', 1)[0]}/timeshift_abs-{int(start)}.m3u8" + (f"?{query}" if query else "")
+
+
+def start(cid: str, compat: bool = False, at: int | None = None) -> dict:
     """Pornește canalul (oprește-l pe cel de dinainte); întoarce sesiunea și playlistul HLS.
-    `compat`: video convertit pe server (doar SD — HD-ul nu încape în procesorul serverului)."""
+    `compat`: video convertit pe server (doar SD — HD-ul nu încape în procesorul serverului).
+    `at`: din arhivă, de la acest moment (doar canalele cu arhivă, în zilele ei)."""
     c = _channel(cid)
+    src = c["url"]
+    if at is not None:
+        days = c.get("catchup_days") or 0
+        if not days or not (time.time() - days * 86400 - 60 <= at <= time.time()):
+            raise SourceError("Emisiunea nu e în arhiva canalului")
+        src = archive_url(c["url"], at)
     if compat:
-        h = probe_height(c["url"])
+        h = probe_height(src)
         if h and h > COMPAT_MAX_HEIGHT:
             raise SourceError(f"hd:{h}")  # interfața arată „Deschide în VLC”
     with _relay_lock:
@@ -418,12 +465,13 @@ def start(cid: str, compat: bool = False) -> dict:
         shutil.rmtree(out_dir, ignore_errors=True)
         out_dir.mkdir(parents=True)
         log = open(out_dir / "ffmpeg.log", "wb")  # nu PIPE: un pipe necitit ar bloca ffmpeg după ore
-        proc = subprocess.Popen(relay_cmd(c["url"], out_dir, compat), stdin=subprocess.DEVNULL,
+        proc = subprocess.Popen(relay_cmd(src, out_dir, compat), stdin=subprocess.DEVNULL,
                                 stdout=subprocess.DEVNULL, stderr=log)
         log.close()
         _relay.update(sess=sess, id=cid, proc=proc, dir=out_dir, seen=time.time())
         threading.Thread(target=_watchdog, args=(proc,), daemon=True).start()
-    return {"session": sess, "playlist": f"/api/iptv/relay/{sess}/index.m3u8", "name": c["name"], "compat": compat}
+    return {"session": sess, "playlist": f"/api/iptv/relay/{sess}/index.m3u8", "name": c["name"],
+            "compat": compat, "archive": at}
 
 
 def m3u_for(cid: str) -> tuple[str, str]:

@@ -27,6 +27,10 @@ def store(monkeypatch, tmp_path):
     monkeypatch.setattr(iptv, "_PROBE_FILE", tmp_path / "iptv_probe.json")
     monkeypatch.setattr(iptv, "_probe", None)
     monkeypatch.setattr(iptv, "start_prober", lambda: None)
+    from app.sources import epg
+
+    monkeypatch.setattr(epg, "refresh", lambda force=False: None)
+    monkeypatch.setattr(epg, "ensure_fresh", lambda: None)
     iptv._cache.clear()
     import requests
 
@@ -162,3 +166,22 @@ def test_probe_reads_interlacing(monkeypatch):
     Out.stdout = "{}"
     with pytest.raises(SourceError):
         iptv.probe_channel("http://x")
+
+
+def test_archive_url_and_window(store, monkeypatch):
+    assert iptv.archive_url("http://h/lb0/UAPerviy_HD/mpegts?token=abc", 1760000000) ==         "http://h/lb0/UAPerviy_HD/timeshift_abs-1760000000.m3u8?token=abc"
+    iptv.set_playlist("http://srv.example/pl.m3u")
+    chans = iptv.overview()["channels"]
+    first, match = chans[0]["id"], chans[1]["id"]  # primul are arhivă 5 zile, al doilea nu
+    started = []
+    monkeypatch.setattr(iptv.subprocess, "Popen", lambda cmd, **kw: started.append(cmd) or type("P", (), {"poll": lambda self: None, "kill": lambda self: None})())
+    monkeypatch.setattr(iptv.threading, "Thread", lambda **kw: type("T", (), {"start": lambda self: None})())
+    import time as _t
+
+    iptv.start(first, at=int(_t.time()) - 3600)
+    assert "timeshift_abs-" in started[-1][started[-1].index("-i") + 1]
+    with pytest.raises(SourceError, match="arhiva"):
+        iptv.start(first, at=int(_t.time()) - 9 * 86400)  # mai vechi de 5 zile
+    with pytest.raises(SourceError, match="arhiva"):
+        iptv.start(match, at=int(_t.time()) - 3600)  # canal fără arhivă
+    iptv.stop_all()
