@@ -240,3 +240,17 @@ def test_scoring_dub_bate_varianta_nemarcata():
     nemarcat = {"name": "Животные / Animals (2026) WEB-DL [H.264/1080p]", "size": "6 GB", "seeds": 40}
     dub = {"name": "Животные / Animals (2026) WEB-DL 1080p | D | Videofilm Int.", "size": "6 GB", "seeds": 20}
     assert score_torrent(dub, 2026)[0] > score_torrent(nemarcat, 2026)[0]
+
+
+def test_season_ranges_and_other_seasons():
+    from app.sources.torrents import names_other_season, pack_mentions_season
+
+    assert pack_mentions_season("Жуки [S1-4 + 2 фильма о фильме] (2019-2024) WEBRip-ExKinoRay", 4)
+    assert pack_mentions_season("Жуки [S01-04E01-65 of 65 + 2 фильма о фильме] (2019-2024) WEBRip", 3)
+    assert pack_mentions_season("Сериал 1-5 сезон (2020)", 5)
+    assert not pack_mentions_season("Жуки [S1-2 + Фильм о сериале] (2019-2021) WEBRip | КПК", 4)
+    # cazul raportat: pachetul sezonului 2 ales pentru S4E2
+    assert names_other_season("Жуки [S2E1-16 of 16] (2021) WEBRip 1080p-Files-x", 4)
+    assert not names_other_season("Жуки / S4E1-17 of 17 (Максим Пешков) [2024, WEBRip 720p]", 4)
+    assert not names_other_season("Жуки (2019) WEB-DL 1080p", 4)  # nu spune sezonul: poate fi oricare
+    assert not pack_mentions_season("Фильм 2019-2024 WEB-DL", 4)  # anii nu sunt sezoane

@@ -200,17 +200,37 @@ def pick_file_index(files: list[dict], season: int, episode: int) -> int | None:
     return idx if idx is not None else first_video_index(files)
 
 
-def pack_mentions_season(name: str, season: int) -> bool:
-    """Numele release-ului (pachetului) indică sezonul dat?
-    ex: 'S4E1-17 of 17', 'Жуки 3 сезон', '4x01'."""
+def seasons_in_name(name: str) -> list[tuple[int, int]]:
+    """Sezoanele declarate în numele release-ului, ca intervale (de la, până la):
+    'S4E1-17' -> [(4, 4)], 'S01-04E01-65' / '[S1-4 + …]' -> [(1, 4)], '1-3 сезон' -> [(1, 3)], '2x05' -> [(2, 2)]."""
     n = (name or "").lower()
-    pats = [
-        rf"s0*{season}(?!\d)\s*[\s._\-]?e",
-        rf"(?<!\d)0*{season}x\d",
-        rf"0*{season}\s*(?:сезон|sezon|season)",
-        rf"(?:сезон|sezon|season)\s*0*{season}(?!\d)",
-    ]
-    return any(re.search(p, n) for p in pats)
+    out: list[tuple[int, int]] = []
+    for x, y in re.findall(r"(?<![a-zа-я0-9])s0*(\d{1,2})\s*-\s*s?0*(\d{1,2})(?!\d)", n):
+        out.append((int(x), int(y)))
+    for x, y in re.findall(r"(?<!\d)(\d{1,2})\s*-\s*(\d{1,2})\s*(?:сезон|sezon|season)", n):
+        out.append((int(x), int(y)))
+    for x, y in re.findall(r"(?:сезон[ыиа]?|seasons?)\s*(\d{1,2})\s*-\s*(\d{1,2})(?!\d)", n):
+        out.append((int(x), int(y)))
+    singles = (
+        re.findall(r"(?<![a-zа-я0-9])s0*(\d{1,2})(?!\d)\s*[\s._\-]?e", n)
+        + re.findall(r"(?<!\d)0*(\d{1,2})x\d", n)
+        + re.findall(r"(?<![\d-])0*(\d{1,2})\s*(?:сезон|sezon|season)", n)
+        + re.findall(r"(?:сезон|sezon|season)\s*0*(\d{1,2})(?![\d-])", n)
+    )
+    out += [(int(x), int(x)) for x in singles]
+    return [(min(x, y), max(x, y)) for x, y in out]
+
+
+def pack_mentions_season(name: str, season: int) -> bool:
+    """Numele release-ului (pachetului) conține sezonul dat?
+    ex: 'S4E1-17 of 17', 'Жуки 3 сезон', '4x01', 'S1-4 + 2 фильма'."""
+    return any(x <= season <= y for x, y in seasons_in_name(name))
+
+
+def names_other_season(name: str, season: int) -> bool:
+    """Release-ul declară alte sezoane, nu pe acesta (ex. 'S2E1-16' când cauți sezonul 4)."""
+    found = seasons_in_name(name)
+    return bool(found) and not any(x <= season <= y for x, y in found)
 
 
 # cache in-memory pentru rezultatele de căutare magneți (15 min)

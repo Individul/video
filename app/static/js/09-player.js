@@ -14,15 +14,29 @@ async function fetchTorrents(t, query, altName, opts = {}) {
   return api(`/api/torrents?${p}`);
 }
 
-function packMentionsSeason(name, season) {
+/* sezoanele declarate în numele release-ului, ca intervale [de la, până la]
+   („S4E1-17” -> [4,4], „S01-04E01-65” / „[S1-4 + …]” -> [1,4], „1-3 сезон”, „2x05”) — ca seasons_in_name din server */
+function seasonsInName(name) {
   const n = (name || "").toLowerCase();
-  return (
-    new RegExp(`s0*${season}(?!\\d)\\s*[\\s._\\-]?e`).test(n) ||
-    new RegExp(`(?<!\\d)0*${season}x\\d`).test(n) ||
-    new RegExp(`0*${season}\\s*(?:сезон|sezon|season)`).test(n) ||
-    new RegExp(`(?:сезон|sezon|season)\\s*0*${season}(?!\\d)`).test(n)
-  );
+  const out = [];
+  const all = (rx) => [...n.matchAll(rx)];
+  all(/(?<![a-zа-я0-9])s0*(\d{1,2})\s*-\s*s?0*(\d{1,2})(?!\d)/g).forEach((m) => out.push([+m[1], +m[2]]));
+  all(/(?<!\d)(\d{1,2})\s*-\s*(\d{1,2})\s*(?:сезон|sezon|season)/g).forEach((m) => out.push([+m[1], +m[2]]));
+  all(/(?:сезон[ыиа]?|seasons?)\s*(\d{1,2})\s*-\s*(\d{1,2})(?!\d)/g).forEach((m) => out.push([+m[1], +m[2]]));
+  [
+    /(?<![a-zа-я0-9])s0*(\d{1,2})(?!\d)\s*[\s._\-]?e/g,
+    /(?<!\d)0*(\d{1,2})x\d/g,
+    /(?<![\d-])0*(\d{1,2})\s*(?:сезон|sezon|season)/g,
+    /(?:сезон|sezon|season)\s*0*(\d{1,2})(?![\d-])/g,
+  ].forEach((rx) => all(rx).forEach((m) => out.push([+m[1], +m[1]])));
+  return out.map(([x, y]) => [Math.min(x, y), Math.max(x, y)]);
 }
+const packMentionsSeason = (name, season) => seasonsInName(name).some(([x, y]) => x <= season && season <= y);
+/* release-ul declară alte sezoane, nu pe acesta (ex. „S2E1-16” când cauți sezonul 4) */
+const namesOtherSeason = (name, season) => {
+  const found = seasonsInName(name);
+  return found.length > 0 && !found.some(([x, y]) => x <= season && season <= y);
+};
 
 async function startStream(source, { fileIndex = 0, season = null, episode = null } = {}) {
   const body = { source, index: fileIndex || 0 };
@@ -198,14 +212,19 @@ async function playEpisode(t, season, episode, seekTo = null) {
     `${t.name} ${season} сезон`,
     t.name,
   ];
+  // prima căutare care aduce pachete cu sezonul cerut câștigă; „Жуки S04E02” poate aduce doar
+  // pachetele sezonului 2 — atunci încercăm mai departe „Жуки 4 сезон”, nu le luăm pe acelea
   let results = null;
   for (const q of queries) {
     try {
       const r = await fetchTorrents(t, q, alt, { noYear: true });
       if (ps !== playSeq) return; // alt episod/versiune ales între timp
       if (r && r.length) {
-        results = r;
-        break;
+        if (r.some((x) => packMentionsSeason(x.name, season))) {
+          results = r;
+          break;
+        }
+        results = results || r;
       }
     } catch (_) {
       if (ps !== playSeq) return;
@@ -218,9 +237,14 @@ async function playEpisode(t, season, episode, seekTo = null) {
   lastTorrentResults = results;
   buildTorrentsList(t, results);
 
-  // doar pachetele care declară sezonul cerut („S4E1-17”, „3 сезон”); altfel toate
+  // doar pachetele care declară sezonul cerut („S4E1-17”, „3 сезон”, „S1-4”); altfel cele care nu
+  // declară alt sezon (pachetul „S2E1-16” nu are cum să conțină S4E2)
   const packs = results.filter((r) => packMentionsSeason(r.name, season));
-  const candidates = (packs.length ? packs : results).slice(0, 3);
+  const candidates = (packs.length ? packs : results.filter((r) => !namesOtherSeason(r.name, season))).slice(0, 3);
+  if (!candidates.length) {
+    playerBox.innerHTML = `<div class="cin-status error">Nu am găsit un release cu sezonul ${season}. Încearcă din panoul „Versiuni”.</div>`;
+    return;
+  }
 
   let data = null, chosen = null;
   for (const c of candidates) {
