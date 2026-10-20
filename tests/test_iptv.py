@@ -175,7 +175,7 @@ def test_archive_url_and_window(store, monkeypatch):
     first, match = chans[0]["id"], chans[1]["id"]  # primul are arhivă 5 zile, al doilea nu
     started = []
     monkeypatch.setattr(iptv.subprocess, "Popen", lambda cmd, **kw: started.append(cmd) or type("P", (), {"poll": lambda self: None, "kill": lambda self: None})())
-    monkeypatch.setattr(iptv.threading, "Thread", lambda **kw: type("T", (), {"start": lambda self: None})())
+    monkeypatch.setattr(iptv, "_watchdog", lambda proc: None)
     import time as _t
 
     iptv.start(first, at=int(_t.time()) - 3600)

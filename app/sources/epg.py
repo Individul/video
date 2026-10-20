@@ -11,7 +11,6 @@ import gzip
 import re
 import threading
 import time
-from datetime import datetime
 
 from app.config import ROOT, Config
 
@@ -24,16 +23,22 @@ _state: dict = {"progs": {}, "ts": 0, "loading": False, "error": None}
 
 
 def parse_time(s: str | None) -> int | None:
-    """„20261020144000 +0300” -> timestamp Unix (fără fus orar: UTC, ca în standardul XMLTV)."""
-    from datetime import timezone
+    """„20261020144000 +0300” -> timestamp Unix (fără fus orar: UTC, ca în standardul XMLTV).
+    De mână, nu cu strptime: ghidul are ~1,3 milioane de ore de citit."""
+    import calendar
 
     s = (s or "").strip()
-    try:
-        if " " in s:
-            return int(datetime.strptime(s, "%Y%m%d%H%M%S %z").timestamp())
-        return int(datetime.strptime(s[:14], "%Y%m%d%H%M%S").replace(tzinfo=timezone.utc).timestamp())
-    except ValueError:
+    if len(s) < 14 or not s[:14].isdigit():
         return None
+    try:
+        ts = calendar.timegm((int(s[0:4]), int(s[4:6]), int(s[6:8]), int(s[8:10]), int(s[10:12]), int(s[12:14])))
+    except (ValueError, OverflowError):
+        return None
+    z = s[14:].strip()
+    if len(z) == 5 and z[0] in "+-" and z[1:].isdigit():
+        off = int(z[1:3]) * 3600 + int(z[3:5]) * 60
+        ts -= off if z[0] == "+" else -off
+    return ts
 
 
 def parse(fileobj, keep: dict[str, int], now: float | None = None) -> dict[str, list]:
