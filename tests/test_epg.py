@@ -53,3 +53,5 @@ def test_now_next_guide_and_search(monkeypatch):
     assert res[0]["live"] and res[1]["archive"]
     assert epg.search("елки", chans, now=NOW)[0]["channel"] == "Кино"  # ё = е
     assert epg.search("x", chans, now=NOW) == []
+    twice = chans + [{**chans[0], "id": "c" * 12}]  # același canal de două ori în playlist
+    assert len(epg.search("футбол", twice, now=NOW)) == 2

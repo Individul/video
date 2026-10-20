@@ -196,7 +196,7 @@ async function loadTv(opts = {}) {
       const box = epgBox.querySelector(".tv-epg-list");
       res.results.forEach((r) => {
         const ch = byId.get(r.cid);
-        if (!ch) return;
+        if (!ch || (ch.state === "bad" && !tvShowBad && !fav.has(ch.id))) return; // nu merge în browser
         const row = document.createElement("div");
         row.className = "tv-epg-row" + (r.live ? " live" : r.archive ? " arch" : " soon");
         const when = r.live ? `<b class="tv-badge live">ACUM</b>` : r.archive

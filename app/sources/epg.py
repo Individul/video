@@ -174,7 +174,7 @@ def search(q: str, channels: list[dict], now: float | None = None, limit: int = 
     words = [w for w in re.findall(r"\w+", _norm(q)) if len(w) >= 2]
     if not words:
         return []
-    out = []
+    out, seen = [], set()
     for c in channels:
         days = c.get("catchup_days") or 0
         for start, stop, title in _list(c.get("tvg_id")):
@@ -185,6 +185,10 @@ def search(q: str, channels: list[dict], now: float | None = None, limit: int = 
             archive = bool(days) and stop <= now and start >= now - days * 86400
             if not (live or start > now or archive):
                 continue
+            key = (c["name"], start, title)  # playlistul are canale puse de două ori
+            if key in seen:
+                continue
+            seen.add(key)
             out.append({"cid": c["id"], "channel": c["name"], "logo": c.get("logo"), "title": title,
                         "start": start, "stop": stop, "live": live, "archive": archive})
     # acum, apoi ce urmează (cel mai curând), apoi arhiva (cea mai recentă)
