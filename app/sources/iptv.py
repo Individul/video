@@ -192,8 +192,15 @@ def _channel(cid: str) -> dict:
 
 # ---------- retransmisia (ffmpeg) ----------
 
-def relay_cmd(src: str, out_dir: Path) -> list[str]:
+# conversia video (canalele întrețesute de satelit, pe care decodorul browserului le refuză):
+# măsurat pe 2 vCPU — SD 576i ~0,6 vCPU (merge), HD 1080i ≥ 1,6 vCPU (tot serverul: nu)
+COMPAT_MAX_HEIGHT = 576
+
+
+def relay_cmd(src: str, out_dir: Path, compat: bool = False) -> list[str]:
     http = src.lower().startswith(("http://", "https://"))
+    video = (["-vf", "yadif=0", "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
+              "-crf", "23", "-g", "50", "-threads", "2"] if compat else ["-c:v", "copy"])
     return [
         "ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin",
         *(["-user_agent", Config.USER_AGENT, "-reconnect", "1", "-reconnect_streamed", "1",
@@ -203,7 +210,7 @@ def relay_cmd(src: str, out_dir: Path) -> list[str]:
         "-readrate", "1.05", "-readrate_initial_burst", "8",
         "-i", src,
         "-map", "0:v:0?", "-map", "0:a:0?",
-        "-c:v", "copy",
+        *video,
         "-c:a", "aac", "-b:a", "160k", "-ac", "2",
         "-af", "aresample=async=1000",
         "-f", "hls", "-hls_time", "4", "-hls_list_size", "15",
@@ -222,9 +229,28 @@ def _stop_locked() -> None:
     _relay.clear()
 
 
-def start(cid: str) -> dict:
-    """Pornește canalul (oprește-l pe cel de dinainte); întoarce sesiunea și playlistul HLS."""
+def probe_height(url: str) -> int | None:
+    """Înălțimea video-ului canalului (ffprobe pe flux, ~3–8 s)."""
+    try:
+        out = subprocess.run(
+            ["ffprobe", "-v", "quiet", "-user_agent", Config.USER_AGENT, "-select_streams", "v:0",
+             "-show_entries", "stream=height", "-of", "json", url],
+            capture_output=True, text=True, timeout=25,
+        ).stdout
+        streams = json.loads(out or "{}").get("streams") or []
+        return int(streams[0]["height"]) if streams and streams[0].get("height") else None
+    except (subprocess.SubprocessError, ValueError, KeyError, OSError):
+        return None
+
+
+def start(cid: str, compat: bool = False) -> dict:
+    """Pornește canalul (oprește-l pe cel de dinainte); întoarce sesiunea și playlistul HLS.
+    `compat`: video convertit pe server (doar SD — HD-ul nu încape în procesorul serverului)."""
     c = _channel(cid)
+    if compat:
+        h = probe_height(c["url"])
+        if h and h > COMPAT_MAX_HEIGHT:
+            raise SourceError(f"hd:{h}")  # interfața arată „Deschide în VLC”
     with _relay_lock:
         _stop_locked()
         sess = secrets.token_hex(8)
@@ -232,12 +258,19 @@ def start(cid: str) -> dict:
         shutil.rmtree(out_dir, ignore_errors=True)
         out_dir.mkdir(parents=True)
         log = open(out_dir / "ffmpeg.log", "wb")  # nu PIPE: un pipe necitit ar bloca ffmpeg după ore
-        proc = subprocess.Popen(relay_cmd(c["url"], out_dir), stdin=subprocess.DEVNULL,
+        proc = subprocess.Popen(relay_cmd(c["url"], out_dir, compat), stdin=subprocess.DEVNULL,
                                 stdout=subprocess.DEVNULL, stderr=log)
         log.close()
         _relay.update(sess=sess, id=cid, proc=proc, dir=out_dir, seen=time.time())
         threading.Thread(target=_watchdog, args=(proc,), daemon=True).start()
-    return {"session": sess, "playlist": f"/api/iptv/relay/{sess}/index.m3u8", "name": c["name"]}
+    return {"session": sess, "playlist": f"/api/iptv/relay/{sess}/index.m3u8", "name": c["name"], "compat": compat}
+
+
+def m3u_for(cid: str) -> tuple[str, str]:
+    """Un playlist cu un singur canal, pentru VLC pe calculatorul tău (conține linkul abonamentului)."""
+    c = _channel(cid)
+    safe = re.sub(r"[^\w\- ]+", "", c["name"]).strip() or "canal"
+    return f"{safe}.m3u", f"#EXTM3U\n#EXTINF:-1,{c['name']}\n{c['url']}\n"
 
 
 def _watchdog(proc) -> None:

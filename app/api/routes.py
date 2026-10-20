@@ -445,13 +445,34 @@ async def iptv_favorite(cid: str) -> dict[str, Any]:
 
 
 @router.post("/iptv/play/{cid}")
-async def iptv_play(cid: str) -> dict[str, Any]:
+async def iptv_play(cid: str, compat: bool = False) -> dict[str, Any]:
+    """`compat=1`: video convertit pe server, pentru canalele pe care browserul nu le poate decoda."""
     from app.sources import iptv
 
     try:
-        return await asyncio.to_thread(iptv.start, cid)
+        return await asyncio.to_thread(iptv.start, cid, compat)
+    except SourceError as e:
+        if str(e).startswith("hd:"):
+            raise HTTPException(status_code=422, detail={"hd": int(str(e)[3:])}) from e
+        raise _iptv_err(e) from e
     except Exception as e:  # noqa: BLE001
         raise _iptv_err(e) from e
+
+
+@router.get("/iptv/m3u/{cid}")
+async def iptv_m3u(cid: str) -> Response:
+    """Canalul ca fișier .m3u pentru VLC (rămâne la tine pe calculator)."""
+    from urllib.parse import quote
+
+    from app.sources import iptv
+
+    try:
+        name, body = await asyncio.to_thread(iptv.m3u_for, cid)
+    except Exception as e:  # noqa: BLE001
+        raise _iptv_err(e) from e
+    return Response(body, media_type="audio/x-mpegurl", headers={
+        "Content-Disposition": f"attachment; filename=\"canal.m3u\"; filename*=UTF-8''{quote(name)}",
+        "Cache-Control": "no-store"})
 
 
 @router.get("/iptv/status/{sess}")

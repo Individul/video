@@ -98,3 +98,19 @@ def test_status_explains_provider_refusal(tmp_path, monkeypatch):
     assert iptv.status("fedcba9876543210")["running"] is False
     with pytest.raises(SourceError):
         iptv.status("x")
+
+
+def test_compat_mode_transcodes_only_video(tmp_path):
+    cmd = iptv.relay_cmd("http://srv/1.m3u8", tmp_path, compat=True)
+    assert cmd[cmd.index("-c:v") + 1] == "libx264" and "yadif=0" in cmd and cmd[cmd.index("-preset") + 1] == "ultrafast"
+    assert iptv.relay_cmd("http://srv/1.m3u8", tmp_path)[iptv.relay_cmd("http://srv/1.m3u8", tmp_path).index("-c:v") + 1] == "copy"
+
+
+def test_compat_refuses_hd_and_m3u_for_vlc(store, monkeypatch):
+    iptv.set_playlist("http://srv.example/pl.m3u")
+    cid = iptv.overview()["channels"][0]["id"]
+    monkeypatch.setattr(iptv, "probe_height", lambda url: 1080)
+    with pytest.raises(SourceError, match="^hd:1080$"):
+        iptv.start(cid, compat=True)
+    name, body = iptv.m3u_for(cid)
+    assert name == "Первый канал HD.m3u" and body.splitlines()[-1].endswith("/101.m3u8")

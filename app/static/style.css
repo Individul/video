@@ -1738,3 +1738,5 @@ body.bk-open main#content { padding-bottom: 7rem; }
 .tv-setup h3 { margin: 0 0 0.8rem; }
 .tv-setup ol { color: var(--text-2); line-height: 1.6; padding-left: 1.2rem; margin: 0 0 1rem; }
 .tv-setup input { flex: 1; min-width: 0; background: none; border: none; outline: none; color: var(--text); font-size: 1rem; }
+.cin-status .live-open { display: inline-flex; align-items: center; gap: 0.4rem; margin-top: 0.9rem; text-decoration: none; }
+.cin-status .live-open svg { fill: #111; }

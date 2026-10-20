@@ -161,7 +161,7 @@ function tvSetup(current) {
 }
 
 /* ---------- player ---------- */
-async function playIptv(ch, list) {
+async function playIptv(ch, list, compat = false) {
   list = list && list.length ? list : (tvData ? tvData.channels : [ch]);
   enterCinema({ id: null, name: ch.name, type: "movie" });
   cinema.classList.add("cin-live");
@@ -169,12 +169,21 @@ async function playIptv(ch, list) {
   const ps = beginPlay();
   const playerBox = $("#player");
   if (!playerBox) return;
-  playerBox.innerHTML = `<div class="cin-status">Pornesc canalul…<small>serverul se conectează la furnizor (3–10 s)</small></div>`;
+  playerBox.innerHTML = compat
+    ? `<div class="cin-status">Browserul nu poate decoda canalul așa cum vine — îl convertesc pe server…<small>încă 5–15 s</small></div>`
+    : `<div class="cin-status">Pornesc canalul…<small>serverul se conectează la furnizor (3–10 s)</small></div>`;
   let sess;
   try {
-    sess = await api(`/api/iptv/play/${ch.id}`, { method: "POST" });
+    sess = await api(`/api/iptv/play/${ch.id}${compat ? "?compat=1" : ""}`, { method: "POST" });
   } catch (err) {
-    if (ps === playSeq) playerBox.innerHTML = `<div class="cin-status error">${esc(err.message)}</div>`;
+    if (ps !== playSeq) return;
+    // HD întrețesut: serverul nu-l poate converti în timp real -> VLC pe calculator
+    const hd = /"hd"\s*:\s*(\d+)/.exec(err.message);
+    playerBox.innerHTML = hd
+      ? `<div class="cin-status error">Browserul nu poate decoda video-ul acestui canal (${hd[1]}p întrețesut, ca la TV prin satelit), iar serverul nu-l poate converti în timp real.
+          <small>Pornește accelerarea grafică în browser (edge://settings/system) sau deschide canalul în VLC.</small>
+          <a class="btn live-open" href="/api/iptv/m3u/${ch.id}">${svg(I.play, 16)} Deschide în VLC</a></div>`
+      : `<div class="cin-status error">${esc(err.message)}</div>`;
     return;
   }
   const stopSession = () => api(`/api/iptv/stop/${sess.session}`, { method: "POST", keepalive: true }).catch(() => {});
@@ -216,7 +225,7 @@ async function playIptv(ch, list) {
   playerBox.querySelector(".cin-video").classList.add("is-live");
   const video = playerBox.querySelector("#video");
   $("#buffer").classList.remove("hidden");
-  $("#cin-mini").innerHTML = `<span class="dot-ok"></span>TV · ${esc(ch.name)}`;
+  $("#cin-mini").innerHTML = `<span class="dot-ok"></span>TV · ${esc(ch.name)}${compat ? " · convertit pe server" : ""}`;
 
   let hls = null;
   const statTimer = setInterval(async () => {
@@ -248,7 +257,13 @@ async function playIptv(ch, list) {
     hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
     let mediaFails = 0;
     hls.on(Hls.Events.ERROR, (_, d) => {
-      if (!ctx.alive || !d.fatal) return;
+      if (!ctx.alive) return;
+      // decodorul refuză video-ul (des: canale întrețesute de satelit) -> varianta convertită pe server
+      if (!compat && d.type === Hls.ErrorTypes.MEDIA_ERROR && video.error && /DECODE/i.test(video.error.message)) {
+        console.warn("tv: decodare refuzată, trec la conversie pe server", video.error.message);
+        return playIptv(ch, list, true);
+      }
+      if (!d.fatal) return;
       if (d.type === Hls.ErrorTypes.MEDIA_ERROR && ++mediaFails <= 2) return hls.recoverMediaError();
       const box = playerBox.querySelector("#video-error");
       if (box) {
