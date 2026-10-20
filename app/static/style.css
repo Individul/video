@@ -464,6 +464,8 @@ main#content {
 .t-q.q-4k { background: rgba(255, 226, 22, 0.16); color: var(--accent-text); }
 .t-q.q-fhd { background: rgba(118, 230, 122, 0.14); color: var(--success-text); }
 .t-q.q-hd { background: rgba(120, 170, 255, 0.14); color: var(--info-text); }
+.t-q.q-src { background: rgba(190, 140, 255, 0.14); color: #b98cff; font-size: 0.64rem; letter-spacing: 0; }
+:root[data-theme="light"] .t-q.q-src { color: #7a3fd1; }
 .q-filter {
   display: flex; gap: 0.4rem; flex-wrap: wrap;
   margin: 0 1.8rem 0.7rem;

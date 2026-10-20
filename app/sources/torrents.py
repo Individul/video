@@ -633,7 +633,7 @@ async def search_torrents(query: str, limit: int | None = None) -> list[dict]:
             results = await asyncio.to_thread(_search_provider_btdig, query) or []
         except Exception:  # noqa: BLE001 — btdig e best-effort
             results = []
-    results = relevant(_filter_media(results), query)
+    results = relevant(_filter_media(_not_audio_or_books(results)), query)
     if not results:
         raise SourceError(f"Niciun rezultat de torrent pentru '{query}'")
 
@@ -652,6 +652,18 @@ async def search_torrents(query: str, limit: int | None = None) -> list[dict]:
     annotated = annotated[:limit]
     _SEARCH_CACHE[cache_key] = (time.monotonic(), annotated)
     return annotated
+
+
+def _not_audio_or_books(results: list[dict]) -> list[dict]:
+    """Versiunile unui film/serial: fără albume și cărți (categoriile Torznab 3xxx Audio, 7xxx Books),
+    ex. „[TR24][OF] Masterplan - Metalmorphosis” la filmul „Masterplan”. Pagina „Torrente” le păstrează."""
+    out = []
+    for r in results:
+        std = [c for c in r.pop("cats", None) or [] if len(c) == 4]  # categoriile standard (nu ale trackerului)
+        if std and all(c[0] in "37" for c in std):
+            continue
+        out.append(r)
+    return out
 
 
 def searchable(text: str | None) -> bool:

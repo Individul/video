@@ -83,9 +83,18 @@ async function autoPlayBest(t, seekTo = null) {
   await playTorrent(t, results[0], { seekTo, ps });
 }
 
+/* tipul sursei, când numele nu spune rezoluția („Masterplan (2026) WEB-DL | D”) */
+const SRC_TYPES = [
+  [/remux/i, "Remux"], [/web-?dl/i, "WEB-DL"], [/web-?rip/i, "WEBRip"], [/blu-?ray|bd-?rip|bdrip/i, "BDRip"],
+  [/hd-?rip/i, "HDRip"], [/dvd-?rip|dvd/i, "DVDRip"], [/hdtv/i, "HDTV"], [/sat-?rip|tv-?rip/i, "TVRip"],
+];
 /* calitatea ca etichetă scurtă și clasă de culoare */
 function qualityOf(r) {
   const q = r.quality || "";
+  if (!q || q === "SD") {
+    const hit = SRC_TYPES.find(([rx]) => rx.test(r.name || ""));
+    if (hit) return { label: hit[1], cls: "q-src" };
+  }
   return { label: q || "—", cls: q === "4K" ? "q-4k" : q === "1080p" ? "q-fhd" : q === "720p" ? "q-hd" : "q-low" };
 }
 
