@@ -18,7 +18,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700;800&display=swap">
-<link rel="stylesheet" href="/static/style.css?v=67">
+<link rel="stylesheet" href="/static/style.css?v=68">
 </head>
 <body>
 
@@ -59,6 +59,10 @@
     <button class="nav-item nav-cat" data-view="live" aria-label="Live">
       <svg viewBox="0 0 24 24"><path d="M12 9.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM7.05 7.05l1.41 1.41a5 5 0 0 0 0 7.08l-1.41 1.41a7 7 0 0 1 0-9.9zm9.9 0a7 7 0 0 1 0 9.9l-1.41-1.41a5 5 0 0 0 0-7.08zM4.22 4.22l1.42 1.42a9 9 0 0 0 0 12.72l-1.42 1.42a11 11 0 0 1 0-15.56zm15.56 0a11 11 0 0 1 0 15.56l-1.42-1.42a9 9 0 0 0 0-12.72z"/></svg>
       <span class="nav-tip">Live</span>
+    </button>
+    <button class="nav-item nav-cat" data-view="tv" aria-label="TV">
+      <svg viewBox="0 0 24 24"><path d="M21 3H3a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h5v2h8v-2h5a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm0 14H3V5h18zM9 7l7 4-7 4z"/></svg>
+      <span class="nav-tip">TV</span>
     </button>
     <div class="nav-group nav-cat">Audio</div>
     <button class="nav-item nav-cat" data-view="audiobooks" aria-label="Cărți audio">
@@ -164,7 +168,7 @@
 
 <!-- scripturi clasice, în ordine: împart același spațiu global (vezi js/01-core.js) -->
 <script src="/static/js/01-core.js?v=50"></script>
-<script src="/static/js/02-router.js?v=53"></script>
+<script src="/static/js/02-router.js?v=54"></script>
 <script src="/static/js/03-pages.js?v=48"></script>
 <script src="/static/js/04-live.js?v=56"></script>
 <script src="/static/js/05-pages-more.js?v=52"></script>
@@ -176,6 +180,7 @@
 <script src="/static/js/11-subtitles.js?v=48"></script>
 <script src="/static/js/12-controls.js?v=51"></script>
 <script src="/static/js/14-books.js?v=7"></script>
+<script src="/static/js/15-iptv.js?v=1"></script>
 <script src="/static/js/13-init.js?v=48"></script>
 </body>
 </html>

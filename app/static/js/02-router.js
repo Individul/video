@@ -23,6 +23,7 @@ function parseRoute() {
   if (seg[0] === "calendar") return { view: "calendar" };
   if (seg[0] === "sport") return { view: "sport" };
   if (seg[0] === "live") return { view: "live" };
+  if (seg[0] === "tv") return { view: "tv" };
   if (seg[0] === "library") return { view: "library" };
   if (seg[0] === "audiobooks") {
     const dec = (x) => {
@@ -213,6 +214,7 @@ async function render() {
   if (r.view === "calendar") return loadCalendar();
   if (r.view === "sport") return loadSport();
   if (r.view === "live") return loadLive();
+  if (r.view === "tv") return loadTv();
   if (r.view === "audiobooks") return loadAudiobooks(r);
   if (r.view === "book") return loadBook(r);
   if (r.view === "library") return loadLibrary();

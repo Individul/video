@@ -1701,3 +1701,40 @@ body.bk-open main#content { padding-bottom: 7rem; }
   border: 1px solid rgba(var(--ink), 0.14); border-radius: 999px; padding: 4px 12px;
 }
 .bk-explore a:hover { color: var(--text); background: rgba(var(--ink), 0.08); }
+
+/* =================== TV (IPTV) =================== */
+.tv-head { display: flex; align-items: baseline; gap: 0.9rem; flex-wrap: wrap; }
+.tv-head .view-title { margin-bottom: 0.6rem; }
+.tv-sub { color: var(--sub); font-size: 0.9rem; }
+.tv-actions { margin-left: auto; display: flex; gap: 0.5rem; }
+.tv-actions .btn { display: inline-flex; align-items: center; gap: 6px; }
+.tv-page .ts-form { margin-bottom: 1rem; }
+.tv-groups { margin: 0 0 1.2rem !important; }
+.tv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 0.8rem; padding-bottom: 2rem; }
+.tv-tile {
+  position: relative; cursor: pointer; border-radius: 14px; padding: 0.7rem; background: var(--card);
+  display: flex; flex-direction: column; gap: 0.5rem; transition: background 0.15s, transform 0.15s;
+}
+.tv-tile:hover { background: var(--card-hover); transform: translateY(-2px); }
+.tv-tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tv-logo {
+  position: relative; aspect-ratio: 16 / 9; border-radius: 10px; overflow: hidden;
+  background: rgba(var(--ink), 0.06); display: flex; align-items: center; justify-content: center;
+}
+.tv-logo span { font-weight: 800; font-size: 1.3rem; color: var(--sub); text-transform: uppercase; }
+.tv-logo img { position: absolute; inset: 8% 10%; width: 80%; height: 84%; object-fit: contain; }
+.tv-logo img + span { visibility: hidden; }
+.tv-name { font-size: 0.82rem; line-height: 1.25; color: var(--text); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.tv-arch { position: absolute; left: 1rem; top: 1rem; font-size: 0.6rem; font-weight: 700; color: var(--sub); background: var(--card); border-radius: 5px; padding: 0 5px; }
+.tv-fav {
+  position: absolute; right: 0.9rem; top: 0.9rem; width: 28px; height: 28px; border-radius: 50%;
+  border: none; background: rgba(0, 0, 0, 0.45); color: #fff; cursor: pointer; opacity: 0;
+  display: flex; align-items: center; justify-content: center; transition: opacity 0.15s;
+}
+.tv-fav svg { fill: currentColor; }
+.tv-tile:hover .tv-fav, .tv-fav.on { opacity: 1; }
+.tv-fav.on { color: var(--accent); }
+.tv-setup { max-width: 760px; background: var(--card); border-radius: var(--radius); padding: 1.4rem 1.6rem; }
+.tv-setup h3 { margin: 0 0 0.8rem; }
+.tv-setup ol { color: var(--text-2); line-height: 1.6; padding-left: 1.2rem; margin: 0 0 1rem; }
+.tv-setup input { flex: 1; min-width: 0; background: none; border: none; outline: none; color: var(--text); font-size: 1rem; }

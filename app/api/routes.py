@@ -389,6 +389,103 @@ async def live_event_play(body: LiveEventPlayBody) -> dict[str, Any]:
         raise _live_err(e) from e
 
 
+# ----------------- TV (IPTV, playlistul abonamentului) -----------------
+
+def _iptv_err(e: Exception) -> HTTPException:
+    if isinstance(e, SourceError):
+        msg = str(e)
+        if "nu e configurat" in msg:
+            return HTTPException(status_code=409, detail=msg)
+        bad = any(w in msg for w in ("invalid", "inexistent", "Link"))
+        return HTTPException(status_code=400 if bad else 502, detail=msg)
+    return HTTPException(status_code=502, detail=f"IPTV indisponibil: {e}")
+
+
+class IptvPlaylistBody(BaseModel):
+    url: str = Field(min_length=8, max_length=2000)
+
+
+@router.get("/iptv")
+async def iptv_overview(refresh: bool = False) -> dict[str, Any]:
+    """Canalele (fără adresele lor), grupurile și favoritele; `configured: false` până pui playlistul."""
+    from app.sources import iptv
+
+    try:
+        return await asyncio.to_thread(iptv.overview, refresh)
+    except Exception as e:  # noqa: BLE001
+        raise _iptv_err(e) from e
+
+
+@router.put("/iptv/playlist")
+async def iptv_set_playlist(body: IptvPlaylistBody) -> dict[str, Any]:
+    from app.sources import iptv
+
+    try:
+        return await asyncio.to_thread(iptv.set_playlist, body.url)
+    except Exception as e:  # noqa: BLE001
+        raise _iptv_err(e) from e
+
+
+@router.delete("/iptv/playlist")
+async def iptv_clear_playlist() -> dict[str, str]:
+    from app.sources import iptv
+
+    await asyncio.to_thread(iptv.clear_playlist)
+    return {"ok": "true"}
+
+
+@router.post("/iptv/favorites/{cid}")
+async def iptv_favorite(cid: str) -> dict[str, Any]:
+    from app.sources import iptv
+
+    try:
+        return {"favorites": await asyncio.to_thread(iptv.toggle_favorite, cid)}
+    except Exception as e:  # noqa: BLE001
+        raise _iptv_err(e) from e
+
+
+@router.post("/iptv/play/{cid}")
+async def iptv_play(cid: str) -> dict[str, Any]:
+    from app.sources import iptv
+
+    try:
+        return await asyncio.to_thread(iptv.start, cid)
+    except Exception as e:  # noqa: BLE001
+        raise _iptv_err(e) from e
+
+
+@router.get("/iptv/status/{sess}")
+async def iptv_status(sess: str) -> dict[str, Any]:
+    from app.sources import iptv
+
+    try:
+        return await asyncio.to_thread(iptv.status, sess)
+    except Exception as e:  # noqa: BLE001
+        raise _iptv_err(e) from e
+
+
+@router.get("/iptv/relay/{sess}/{name}")
+async def iptv_relay_file(sess: str, name: str) -> Response:
+    from fastapi.responses import FileResponse
+
+    from app.sources import iptv
+
+    path = await asyncio.to_thread(iptv.relay_file, sess, name)
+    if not path:
+        raise HTTPException(status_code=404, detail="Încă nu e gata")
+    if name.endswith(".m3u8"):
+        return Response(path.read_text(), media_type="application/vnd.apple.mpegurl", headers={"Cache-Control": "no-store"})
+    return FileResponse(path, media_type="video/mp2t")
+
+
+@router.post("/iptv/stop/{sess}")
+async def iptv_stop(sess: str) -> dict[str, str]:
+    from app.sources import iptv
+
+    await asyncio.to_thread(iptv.stop, sess)
+    return {"ok": "true"}
+
+
 @router.get("/sport")
 async def sport_feed(q: str | None = Query(None, max_length=100)) -> dict[str, Any]:
     """Ultimele meciuri/evenimente de pe RGFootball, grupate pe meci (pagina „Sport”);
