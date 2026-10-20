@@ -47,13 +47,19 @@ def parse(fileobj, keep: dict[str, int], now: float | None = None) -> dict[str, 
 
     now = now or time.time()
     progs: dict[str, list] = {}
+    # filtru grosier pe data scrisă („20261020…”), înainte de a calcula orele: ghidul are ~3 luni,
+    # păstrăm doar ~1 săptămână (o zi de rezervă pentru fusurile orare)
+    max_back = max([d for d in keep.values()] + [1]) * 86400
+    lo = time.strftime("%Y%m%d", time.gmtime(now - max_back - 86400))
+    hi = time.strftime("%Y%m%d", time.gmtime(now + _AHEAD + 86400))
     for _, el in iterparse(fileobj, events=("end",)):
         if el.tag != "programme":
             if el.tag == "channel":
                 el.clear()
             continue
         cid = el.get("channel")
-        if cid in keep:
+        day = (el.get("start") or "")[:8]
+        if cid in keep and lo <= day <= hi:
             start, stop = parse_time(el.get("start")), parse_time(el.get("stop"))
             back = keep[cid] * 86400 if keep[cid] else 3 * 3600
             if start and stop and stop > now - back and start < now + _AHEAD:
