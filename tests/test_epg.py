@@ -9,6 +9,7 @@ X = """<?xml version="1.0" encoding="utf-8"?>
 <programme start="{a}" stop="{b}" channel="perviy"><title>Новости</title></programme>
 <programme start="{b}" stop="{c}" channel="perviy"><title>Футбол. Лига чемпионов. Реал — Бавария</title></programme>
 <programme start="{c}" stop="{d}" channel="perviy"><title>Вечерний Ургант</title></programme>
+<programme start="{c}" stop="{d}" channel="perviy"><title>Вечерний Ургант</title></programme>
 <programme start="{old}" stop="{old2}" channel="perviy"><title>Футбол. Обзор тура</title></programme>
 <programme start="{b}" stop="{c}" channel="kino"><title>Х/ф Ёлки</title></programme>
 <programme start="{b}" stop="{c}" channel="other"><title>Nu e în playlist</title></programme>

@@ -66,8 +66,8 @@ def parse(fileobj, keep: dict[str, int], now: float | None = None) -> dict[str, 
                 title = " ".join((el.findtext("title") or "").split())[:160]
                 progs.setdefault(cid, []).append((start, stop, title))
         el.clear()
-    for v in progs.values():
-        v.sort()
+    for k, v in progs.items():  # unele canale au emisiunile de două ori în ghid
+        progs[k] = sorted(set(v))
     return progs
 
 
@@ -102,7 +102,10 @@ def refresh(force: bool = False) -> None:
         if not url:
             _state["error"] = "Playlistul nu are ghid TV (url-tvg)"
             return
-        keep = {c["tvg_id"]: (c.get("catchup_days") or 0) for c in pl["channels"] if c.get("tvg_id")}
+        keep: dict[str, int] = {}
+        for c in pl["channels"]:  # același canal poate apărea de două ori (cu și fără arhivă): cea mai lungă
+            if c.get("tvg_id"):
+                keep[c["tvg_id"]] = max(keep.get(c["tvg_id"], 0), c.get("catchup_days") or 0)
         try:
             _download(url.split(" ")[0])
         except Exception as e:  # noqa: BLE001 — rămâne fișierul vechi, dacă e
