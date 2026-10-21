@@ -1814,3 +1814,13 @@ body.bk-open main#content { padding-bottom: 7rem; }
 .nf-text svg { fill: var(--accent-text); }
 .nf-row.unread .nf-text { color: var(--text); }
 .nf-when { color: var(--sub); font-size: 0.8rem; white-space: nowrap; }
+
+/* Live: stările din coloana orei („Încheiat”, „Перерыв”…) ca etichete, meciurile încheiate estompate */
+.lv-time.lv-state {
+  font-size: 0.7rem; font-weight: 700; letter-spacing: 0.2px; text-align: center; white-space: normal;
+  line-height: 1.15; border-radius: 6px; padding: 3px 6px; background: rgba(var(--ink), 0.08); color: var(--text-2);
+}
+.lv-time.lv-state.over { background: none; color: var(--sub); }
+.lv-row.lv-over { opacity: 0.6; }
+.lv-row.lv-over:hover { opacity: 1; }
+.lv-sec-over { margin-top: 2rem; color: var(--sub); }

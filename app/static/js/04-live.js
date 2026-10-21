@@ -70,8 +70,11 @@ async function loadLive() {
     );
 
     const shown = events.filter((e) => liveLeague === "all" || (e.league || "Altele") === liveLeague);
+    // „Завершен” / „Окончен” = s-a terminat: separat, jos, estompat (nu printre cele care urmează)
+    const isOver = (e) => !e.is_live && /заверш|оконч|finished|ended/i.test(e.when || "");
     const live = shown.filter((e) => e.is_live);
-    const later = shown.filter((e) => !e.is_live);
+    const later = shown.filter((e) => !e.is_live && !isOver(e));
+    const over = shown.filter(isOver);
     const onPlay = (el, ev) =>
       el.querySelector('[data-a="play"]').addEventListener("click", () =>
         playLive({ name: `${ev.home} – ${ev.away}`, url: ev.url })
@@ -104,25 +107,35 @@ async function loadLive() {
       box.appendChild(tiles);
     }
 
-    if (later.length) {
-      box.insertAdjacentHTML("beforeend", `<div class="lv-sec">Urmează <small>${later.length}</small></div>`);
+    // coloana din stânga: ora de start mare; orice alt text de pe site (stare) ca etichetă mică
+    const timeCell = (ev, over) => {
+      const w = (ev.when || "").trim();
+      if (over) return `<span class="lv-time lv-state over">Încheiat</span>`;
+      if (/^\d{1,2}:\d{2}$/.test(w)) return `<span class="lv-time">${esc(w)}</span>`;
+      return `<span class="lv-time lv-state">${esc(w || "—")}</span>`;
+    };
+    const rows = (list, title, over = false) => {
+      if (!list.length) return;
+      box.insertAdjacentHTML("beforeend", `<div class="lv-sec${over ? " lv-sec-over" : ""}">${title} <small>${list.length}</small></div>`);
       let lastDay = "";
-      later.forEach((ev) => {
-        if (ev.day !== lastDay) {
+      list.forEach((ev) => {
+        if (!over && ev.day !== lastDay) {
           lastDay = ev.day;
           box.insertAdjacentHTML("beforeend", `<div class="lv-day">${esc(ev.day || "")}</div>`);
         }
         const row = document.createElement("div");
-        row.className = "lv-row";
+        row.className = "lv-row" + (over ? " lv-over" : "");
         row.innerHTML = `
-          <span class="lv-time">${esc(ev.when || "—")}</span>
+          ${timeCell(ev, over)}
           <div class="lv-main"><div class="lv-teams">${esc(ev.home)} – ${esc(ev.away)}</div><div class="lv-meta">${meta(ev)}</div></div>
           ${playBtn()}`;
         onPlay(row, ev);
         box.appendChild(row);
       });
-    }
-    if (!live.length && !later.length) box.innerHTML = `<div class="status">Nimic la această competiție.</div>`;
+    };
+    rows(later, "Urmează");
+    rows(over, "Încheiate", true);
+    if (!live.length && !later.length && !over.length) box.innerHTML = `<div class="status">Nimic la această competiție.</div>`;
   };
 
   // „actualizat acum 20 s” — se reîmprospătează singur la 65 s
