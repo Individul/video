@@ -130,7 +130,7 @@ def test_relay_file_only_serves_own_session_and_safe_names(tmp_path, monkeypatch
         live.relay_file("../x", "index.m3u8")
 
 
-def test_prepare_decides_relay_by_audio_codec(monkeypatch):
+def test_prepare_relays_everything_with_audio(monkeypatch):
     from fastapi.testclient import TestClient
 
     from app.config import Config
@@ -139,8 +139,12 @@ def test_prepare_decides_relay_by_audio_codec(monkeypatch):
     monkeypatch.setattr(Config, "APP_PASSWORD", None)
     monkeypatch.setattr(live, "start_relay", lambda ih, sess: f"/api/live/relay/{sess}/index.m3u8")
     with TestClient(app) as c:
+        # și AAC trece prin ffmpeg: golurile P2P din sunet devin liniște, nu „voce de robot”
         monkeypatch.setattr(live, "stream_info", lambda ih, sess: {"audio": "aac", "interlaced": False})
-        assert c.post(f"/api/live/prepare/{H}/{S}").json() == {"relay": False, "audio": "aac", "interlaced": False}
+        r = c.post(f"/api/live/prepare/{H}/{S}").json()
+        assert r == {"relay": True, "audio": "aac", "interlaced": False, "playlist": f"/api/live/relay/{S}/index.m3u8"}
+        monkeypatch.setattr(live, "stream_info", lambda ih, sess: {"audio": None, "interlaced": False})
+        assert c.post(f"/api/live/prepare/{H}/{S}").json() == {"relay": False, "audio": None, "interlaced": False}
         monkeypatch.setattr(live, "stream_info", lambda ih, sess: {"audio": "mp2", "interlaced": True})
         r = c.post(f"/api/live/prepare/{H}/{S}").json()
         assert r == {"relay": True, "audio": "mp2", "interlaced": True, "playlist": f"/api/live/relay/{S}/index.m3u8"}

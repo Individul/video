@@ -290,14 +290,17 @@ async def live_stat(ih: str, sess: str) -> dict[str, Any]:
         raise _live_err(e) from e
 
 
-# sunete pe care hls.js + browserul le redau direct; restul (MP2, AC3…) trec prin ffmpeg
-_LIVE_NATIVE_AUDIO = {"aac", None}
+# toate transmisiile trec prin ffmpeg (sunet re-codat AAC, video copiat): și cele cu AAC, pentru că
+# P2P-ul pierde uneori ~1 s de sunet într-un segment, iar decodorul din browser rămâne apoi pe
+# „voce de robot”; ffmpeg umple golul cu liniște (aresample=async) și sunetul ajunge continuu.
+# Direct rămân doar transmisiile fără sunet detectat (ffmpeg n-ar avea ce mapa).
+_LIVE_NATIVE_AUDIO = {None}
 
 
 @router.post("/live/prepare/{ih}/{sess}")
 async def live_prepare(ih: str, sess: str) -> dict[str, Any]:
-    """După ce motorul are segmente: dacă sunetul nu e AAC, pornește retransmisia ffmpeg
-    și întoarce playlist-ul ei; altfel player-ul rămâne pe playlist-ul motorului."""
+    """După ce motorul are segmente: pornește retransmisia ffmpeg (sunet continuu, AAC)
+    și întoarce playlist-ul ei; fără sunet detectat, player-ul rămâne pe playlist-ul motorului."""
     from app.sources import live
 
     try:

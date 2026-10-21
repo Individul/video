@@ -335,7 +335,9 @@ async function playLive({ name, ref, url }) {
       console.warn(`live: sunet ${prep.audio} → retransmisie cu AAC`);
       sess.playlist = prep.playlist;
       for (let i = 0; i < 20 && ctx.alive; i++) {
-        sub.textContent = `Live · convertesc sunetul (${prep.audio.toUpperCase()} → AAC)…`;
+        sub.textContent = prep.audio === "aac"
+          ? "Live · pregătesc sunetul (fără goluri)…"
+          : `Live · convertesc sunetul (${prep.audio.toUpperCase()} → AAC)…`;
         const r = await fetch(sess.playlist, { cache: "no-store" }).catch(() => null);
         if (r && r.ok && ((await r.text()).match(/#EXTINF/g) || []).length >= 4) break;
         await new Promise((res) => setTimeout(res, 1500));
