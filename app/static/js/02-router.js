@@ -17,6 +17,7 @@ function parseRoute() {
     } catch (_) {} // hash scris de mână cu „%” invalid — folosim textul brut
     return { view: "searchpage", q };
   }
+  if (seg[0] === "news") return { view: "news" };
   if (seg[0] === "watchlist") return { view: "watchlist" };
   if (seg[0] === "continue") return { view: "continue" };
   if (seg[0] === "downloads") return { view: "downloads" };
@@ -208,6 +209,7 @@ async function render() {
   if (r.view === "person") return loadPerson(r.id);
   if (r.view === "browse") return loadBrowse(r.category);
   if (r.view === "searchpage") return loadSearchPage(r.q);
+  if (r.view === "news") return loadNews();
   if (r.view === "watchlist") return loadWatchlist();
   if (r.view === "continue") return loadContinue();
   if (r.view === "downloads") return loadDownloads();

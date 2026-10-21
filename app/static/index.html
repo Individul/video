@@ -18,7 +18,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700;800&display=swap">
-<link rel="stylesheet" href="/static/style.css?v=71">
+<link rel="stylesheet" href="/static/style.css?v=72">
 </head>
 <body>
 
@@ -74,6 +74,11 @@
       <span class="nav-tip">Biblioteca</span>
     </button>
     <div class="nav-group">Al meu</div>
+    <button class="nav-item" data-view="news" aria-label="Noutăți">
+      <svg viewBox="0 0 24 24"><path d="M12 22a2 2 0 0 0 2-2h-4a2 2 0 0 0 2 2zm6-6V11a6 6 0 0 0-5-5.9V4a1 1 0 0 0-2 0v1.1A6 6 0 0 0 6 11v5l-2 2v1h16v-1z"/></svg>
+      <span class="nav-tip">Noutăți</span>
+      <span class="nav-badge" hidden></span>
+    </button>
     <button class="nav-item" data-view="watchlist" aria-label="Watchlist">
       <svg viewBox="0 0 24 24"><path d="M12 17.3l-6.2 3.7 1.6-7L2 9.2l7.1-.6L12 2l2.9 6.6 7.1.6-5.4 4.8 1.6 7z"/></svg>
       <span class="nav-tip">Watchlist</span>
@@ -168,7 +173,7 @@
 
 <!-- scripturi clasice, în ordine: împart același spațiu global (vezi js/01-core.js) -->
 <script src="/static/js/01-core.js?v=50"></script>
-<script src="/static/js/02-router.js?v=54"></script>
+<script src="/static/js/02-router.js?v=55"></script>
 <script src="/static/js/03-pages.js?v=48"></script>
 <script src="/static/js/04-live.js?v=56"></script>
 <script src="/static/js/05-pages-more.js?v=52"></script>
@@ -181,6 +186,7 @@
 <script src="/static/js/12-controls.js?v=51"></script>
 <script src="/static/js/14-books.js?v=7"></script>
 <script src="/static/js/15-iptv.js?v=5"></script>
+<script src="/static/js/16-notify.js?v=1"></script>
 <script src="/static/js/13-init.js?v=48"></script>
 </body>
 </html>

@@ -132,3 +132,20 @@ class AudioBook(Base):
     duration: Mapped[float | None] = mapped_column(Float, nullable=True)  # durata pistei curente
     added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     listened_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class Notification(Base):
+    """Anunț din clopoțel: episod nou disponibil / sezon nou anunțat la un serial urmărit."""
+
+    __tablename__ = "notifications"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title_id: Mapped[int] = mapped_column(ForeignKey("titles.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(16))  # episode | season
+    season: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    episode: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    text: Mapped[str] = mapped_column(String(256))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    title: Mapped[Title] = relationship()

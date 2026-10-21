@@ -1,3 +1,5 @@
+import asyncio
+import os
 import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -64,7 +66,14 @@ async def lifespan(app: FastAPI):
     if Config.TORZNAB_URL and Config.TORZNAB_API_KEY:
         threading.Thread(target=_warm_books, daemon=True).start()
     threading.Thread(target=_warm_iptv, daemon=True).start()
+    task = None
+    if Config.TMDB_API_KEY and not os.getenv("PYTEST_CURRENT_TEST"):
+        from app.services import notify
+
+        task = asyncio.create_task(notify.loop())  # clopoțelul: serialele urmărite, la 4 ore
     yield
+    if task:
+        task.cancel()
 
 
 app = FastAPI(title="Cinema — agregator filme/seriale cu traducere rusa", lifespan=lifespan)

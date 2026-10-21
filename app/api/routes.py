@@ -29,6 +29,7 @@ from app.db import get_session
 from app.models import (
     AudioBook,
     HistoryItem,
+    Notification,
     Title,
     TitleType,
     WatchlistItem,
@@ -1174,6 +1175,48 @@ async def title_episodes(
 
 
 # ----------------- watchlist -----------------
+
+# ----------------- clopoțelul: episoade noi la serialele urmărite -----------------
+
+@router.get("/notifications")
+async def notifications_list(db: AsyncSession = Depends(get_session)) -> dict[str, Any]:
+    from app.services import notify
+
+    items = (await db.scalars(
+        select(Notification).options(selectinload(Notification.title))
+        .order_by(Notification.created_at.desc()).limit(60)
+    )).all()
+    unread = sum(1 for n in items if n.read_at is None)
+    return {
+        "unread": unread,
+        "items": [{
+            "id": n.id, "kind": n.kind, "season": n.season, "episode": n.episode, "text": n.text,
+            "created_at": n.created_at.isoformat() if n.created_at else None, "read": n.read_at is not None,
+            "title": _title_to_dict(n.title),
+        } for n in items],
+        "check": notify.status(),
+    }
+
+
+@router.post("/notifications/read")
+async def notifications_read(db: AsyncSession = Depends(get_session)) -> dict[str, str]:
+    """Toate anunțurile devin citite (la deschiderea listei)."""
+    from sqlalchemy import update
+
+    await db.execute(update(Notification).where(Notification.read_at.is_(None)).values(read_at=datetime.now(UTC)))
+    await db.commit()
+    return {"ok": "true"}
+
+
+@router.post("/notifications/check")
+async def notifications_check() -> dict[str, Any]:
+    """Verifică acum serialele urmărite (altfel se face singur la 4 ore)."""
+    from app.db import SessionLocal
+    from app.services import notify
+
+    created = await notify.run_once(SessionLocal)
+    return {"created": created, **notify.status()}
+
 
 @router.get("/watchlist")
 async def watchlist_list(db: AsyncSession = Depends(get_session)) -> list[dict[str, Any]]:
