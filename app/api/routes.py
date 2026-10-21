@@ -1174,6 +1174,51 @@ async def title_episodes(
     )
 
 
+_EXTRA_EPS_CACHE: dict[tuple[int, int], tuple[float, int]] = {}
+
+
+@router.get("/title/{title_id}/episodes/extra")
+async def title_episodes_extra(
+    title_id: int,
+    season: int = Query(ge=1),
+    known: int = Query(ge=0, le=500),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """Episoadele pe care TMDB nu le are, dar pachetele de pe trackere da (ex. Жуки S4: TMDB 16,
+    trackerele „S4E1-17 of 17”). Cerute după ce lista din TMDB e deja afișată."""
+    import time as _time
+
+    title = await catalog.get_title(db, title_id)
+    if title is None:
+        raise HTTPException(status_code=404, detail="Titlul nu exista")
+    key = (title_id, season)
+    hit = _EXTRA_EPS_CACHE.get(key)
+    if hit and _time.time() - hit[0] < 12 * 3600:
+        total = hit[1]
+    else:
+        total = 0
+        for q in (f"{title.name} {season} сезон", f"{title.name} S{season:02d}"):
+            try:
+                res = await torrent_service.search_torrents(q)
+            except SourceError:
+                continue
+            total = max(total, torrent_service.season_episodes_in_packs([x["name"] for x in res], season))
+        _EXTRA_EPS_CACHE[key] = (_time.time(), total)
+    extra = [{"season": season, "episode": e, "name": None, "still": None, "air_date": None, "extra": True}
+             for e in range(known + 1, total + 1)] if known else []
+    if extra:  # „Continuă” / „Urmează” să știe de episoadele în plus
+        try:
+            data = json.loads(title.extra) if title.extra else {}
+            for x in data.get("seasons") or []:
+                if x.get("season") == season and int(x.get("episodes") or 0) < total:
+                    x["episodes"] = total
+                    title.extra = json.dumps(data, ensure_ascii=False)
+                    await db.commit()
+        except (TypeError, ValueError):
+            pass
+    return {"season": season, "total": total, "episodes": extra}
+
+
 # ----------------- watchlist -----------------
 
 # ----------------- clopoțelul: episoade noi la serialele urmărite -----------------

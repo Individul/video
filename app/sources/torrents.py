@@ -233,6 +233,32 @@ def names_other_season(name: str, season: int) -> bool:
     return bool(found) and not any(x <= season <= y for x, y in found)
 
 
+_EP_RANGE = [
+    re.compile(r"(?<![a-zа-я0-9])s0*\d{1,2}\s*[\s._\-]?e0*(\d+)\s*-\s*(?:e)?0*(\d+)"),  # S4E1-17
+    re.compile(r"\[\s*0*(\d+)\s*-\s*0*(\d+)\s*(?:из|of)\s*\d+"),  # [01-17 из 17]
+    re.compile(r"(?:серии|episodes)\s*0*(\d+)\s*-\s*0*(\d+)"),
+]
+
+
+def season_episodes_in_packs(names: list[str], season: int) -> int:
+    """Ultimul episod al sezonului prezent în pachetele de pe trackere („S4E1-17 of 17” -> 17).
+    Doar pachetele unui singur sezon (la „S1-4” numărul n-ar fi al sezonului cerut)."""
+    best = 0
+    for name in names:
+        found = seasons_in_name(name)
+        if not found or any(x != season or y != season for x, y in found):
+            continue
+        n = (name or "").lower()
+        for rx in _EP_RANGE:
+            m = rx.search(n)
+            if m:
+                a, b = int(m.group(1)), int(m.group(2))
+                if a <= b <= 200:
+                    best = max(best, b)
+                break
+    return best
+
+
 # cache in-memory pentru rezultatele de căutare magneți (15 min)
 _SEARCH_CACHE: dict[str, tuple[float, list[dict]]] = {}
 _SEARCH_CACHE_TTL = 900.0

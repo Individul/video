@@ -421,9 +421,27 @@ async function renderEpisodesTab(t) {
       }
       if (ds !== detailSeq) return; // alt titlu deschis între timp — nu-i stricăm cache-ul
       epsBySeason[s] = eps;
+      addTrackerEpisodes(s, eps);
     }
     if (s !== wantedSeason) return; // ai ales între timp alt sezon
     renderSeason(epsBySeason[s] || [], s);
+  }
+  // episoadele pe care TMDB nu le are, dar pachetele de pe trackere da (ex. „S4E1-17 of 17” față de 16)
+  async function addTrackerEpisodes(s, eps) {
+    const last = Math.max(0, ...eps.map((e) => e.episode));
+    const today = new Date().toISOString().slice(0, 10);
+    if (!s || !last || eps.some((e) => e.air_date && e.air_date > today)) return; // sezon încă în difuzare
+    let r;
+    try {
+      r = await api(`/api/title/${t.id}/episodes/extra?season=${s}&known=${last}`);
+    } catch (_) {
+      return;
+    }
+    if (ds !== detailSeq || !r.episodes.length || epsBySeason[s] !== eps) return;
+    epsBySeason[s] = [...eps, ...r.episodes];
+    const ts = (t.seasons || []).find((x) => x.season === s);
+    if (ts && ts.episodes < r.total) ts.episodes = r.total; // „următorul episod” după ultimul din TMDB
+    if (s === wantedSeason) renderSeason(epsBySeason[s], s);
   }
 
   const watchedHtml = (h) => {

@@ -254,3 +254,15 @@ def test_season_ranges_and_other_seasons():
     assert not names_other_season("Жуки / S4E1-17 of 17 (Максим Пешков) [2024, WEBRip 720p]", 4)
     assert not names_other_season("Жуки (2019) WEB-DL 1080p", 4)  # nu spune sezonul: poate fi oricare
     assert not pack_mentions_season("Фильм 2019-2024 WEB-DL", 4)  # anii nu sunt sezoane
+
+
+def test_season_episodes_in_packs():
+    from app.sources.torrents import season_episodes_in_packs
+
+    names = ["Жуки / S4E1-17 of 17 (Максим Пешков) [2024, WEBRip 1080p]",
+             "Жуки [S1-4 + 2 фильма о фильме] (2019-2024) WEBRip",  # mai multe sezoane: ignorat
+             "Жуки / S4E1-16 of 17 [2024, HDTV]",
+             "Жуки (4 сезон) [01-17 из 17] (2024) WEBRip"]
+    assert season_episodes_in_packs(names, 4) == 17
+    assert season_episodes_in_packs(["Жуки / S5E1-4 of 10 [2026]"], 5) == 4  # doar ce a apărut
+    assert season_episodes_in_packs(["Жуки / S3E1-16 of 16"], 4) == 0
