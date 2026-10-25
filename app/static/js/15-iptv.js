@@ -2,6 +2,7 @@
    Serverul retransmite canalul ales prin ffmpeg (sunet AAC, HLS), playerul e cel de la Live. */
 "use strict";
 
+const BK_SEARCH_ICON = "M15.5 14h-.8l-.3-.3a6.5 6.5 0 1 0-.7.7l.3.3v.8l5 5 1.5-1.5-5-5zm-6 0a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z";
 const TV_ICON_STAR = "M12 17.3l-6.2 3.7 1.6-7L2 9.2l7.1-.6L12 2l2.9 6.6 7.1.6-5.4 4.8 1.6 7z";
 let tvGroup = (() => {
   try {

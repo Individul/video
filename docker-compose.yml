@@ -53,7 +53,6 @@ services:
       - KP_API_KEY=${KP_API_KEY:-}
     volumes:
       - ./data:/data
-      - ./media/audiobooks:/media/audiobooks:ro   # cărțile audio descărcate, pentru playerul din Cinema
     mem_limit: 384m          # ffmpeg (extragerea subtitrărilor) rulează tot aici
     logging: *logging
     restart: unless-stopped
@@ -116,26 +115,6 @@ services:
       - "8621:8621/tcp"
       - "8621:8621/udp"
     # API-ul 6878 rămâne intern: îl văd doar Caddy (după login) și portalul
-
-  # ---------- bibliotecă: cărți audio ----------
-  qbittorrent:
-    # descarcă pe disc ce alegi din „Cărți audio” (TorrServer doar transmite, nu păstrează)
-    image: lscr.io/linuxserver/qbittorrent:5.2.4_v2.0.15-ls481@sha256:1ea873647c43d566f251a7122aee330b184509c57ee3257ed19f62dac0f8f24b
-    container_name: qbittorrent
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=${TZ:-Europe/Chisinau}
-      - WEBUI_PORT=8080          # API intern: îl folosește doar portalul (fără porturi publice)
-    volumes:
-      - ./qbittorrent:/config
-      - ./media:/media
-    ports:
-      - "6882:6882/tcp"          # peers BitTorrent pentru bibliotecă
-      - "6882:6882/udp"
-    mem_limit: 384m
-    logging: *logging
-    restart: unless-stopped
 
 volumes:
   caddy_data:

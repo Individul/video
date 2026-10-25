@@ -20,10 +20,6 @@ transmisii live prin Ace Stream. Rulează 24/7 pe un VPS, în Docker, în spatel
 - **Live**: transmisii Ace Stream după ID-urile `acestream://…` aduse de utilizator; canale salvate.
   Pagina aduce automat **evenimentele sportive ale zilei de pe pimpletv.ru** (fotbal, hochei…, ore ora
   Moscovei): un click pe „Pornește” rezolvă pagina meciului la ID-ul Ace Stream și pornește redarea.
-- **Cărți audio**: noutăți pe genuri direct de pe trackere (RuTracker, NNM-Club), cu coperți, descrieri și
-  genuri de pe LitRes; aceeași carte de la mai mulți cititori = o carte cu mai multe versiuni. „Adaugă”
-  o descarcă pe server (qBittorrent, `./media/audiobooks`), iar playerul de jos ține minte pista și
-  secunda (±30 s, viteză 0.75–2×). **Biblioteca** arată descărcările și spațiul liber.
 - **Calendar**: aparițiile viitoare (filme și episoade noi).
 - **Torrente**: căutare directă în toate sursele, pentru orice release.
 - **Watchlist**, **Continuă** (istoric), **Descărcări** (cache-ul TorrServer).
@@ -35,9 +31,7 @@ browser ──HTTPS──▶ Caddy ──▶ vid (FastAPI + SQLite, parolă)
                      │          ├──▶ TMDB / Kinopoisk (catalog)
                      │          ├──▶ Jackett ──▶ FlareSolverr (trackere, Cloudflare)
                      │          ├──▶ Rutor / BTDig (magneți)
-                     │          ├──▶ motorul Ace Stream (API intern)
-                     │          ├──▶ LitRes (coperți cărți audio)
-                     │          └──▶ qBittorrent ──▶ ./media/audiobooks (6882)
+                     │          └──▶ motorul Ace Stream (API intern)
                      ├─/ts/stream/*──(după login)──▶ TorrServer ──▶ peers BitTorrent (6881)
                      └─/ace/c/*─────(după login)──▶ Ace Stream ──▶ peers Ace (8621)
 ```
@@ -50,9 +44,8 @@ browser ──HTTPS──▶ Caddy ──▶ vid (FastAPI + SQLite, parolă)
 | `jackett` | căutare pe trackere (rutracker, nnmclub, …) | 384 MB |
 | `flaresolverr` | trece de Cloudflare pentru Jackett | 768 MB |
 | `acestream` | motorul Ace Stream 3.2.11 (pachetul oficial), cache disc ≤ 300 MB | 1 GB |
-| `qbittorrent` | descarcă cărțile audio pe disc (API doar în rețeaua Docker) | 384 MB |
 
-Spre internet sunt deschise doar 80/443 (Caddy), 6881 (TorrServer), 6882 (qBittorrent) și 8621 (Ace Stream).
+Spre internet sunt deschise doar 80/443 (Caddy), 6881 (TorrServer) și 8621 (Ace Stream).
 
 ## Dezvoltare locală
 
@@ -77,7 +70,6 @@ Testele rulează fără internet (parsare pe HTML fix, logică DB în memorie). 
 | Descărcări | `GET /downloads`, `DELETE /downloads/{hash}` |
 | Subtitrări | `GET /subtitles/embed`, `/subtitles/file`, `/subtitles/mux`, `/subtitles/mux/data`; `DELETE /subtitles/mux` |
 | Sport | `GET /sport` |
-| Cărți audio | `GET /books/genres`, `/books/browse?genre=&q=`, `/books/book?author=&title=`, `/books/meta`, `/books/library`, `/books/{hash}/tracks`, `/books/{hash}/file/{index}`; `POST /books/add`; `PUT /books/{hash}/progress`; `DELETE /books/{hash}` |
 | Live | `POST /live/start`, `GET /live/m/{ih}/{sess}.m3u8`, `/live/stat/{ih}/{sess}`, `POST /live/stop/{ih}/{sess}`, `GET/POST /live/channels`, `DELETE /live/channels/{h}` |
 | Live evenimente | `GET /live/events` (pimpletv.ru: meciurile zilei, ore ora Moscovei), `POST /live/events/play {url}` (rezolvă pagina meciului la ID-ul Ace Stream și pornește) |
 | Utilizator | `GET/POST /watchlist`, `DELETE /watchlist/{id}`, `GET/POST /history`, `GET /title/{id}/history` |

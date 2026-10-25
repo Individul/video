@@ -115,25 +115,6 @@ class HistoryItem(Base):
     )
 
 
-class AudioBook(Base):
-    """O carte audio din bibliotecă (descărcată de qBittorrent) și unde ai rămas cu ascultarea."""
-
-    __tablename__ = "audiobooks"
-
-    hash: Mapped[str] = mapped_column(String(40), primary_key=True)  # infohash-ul torrentului
-    author: Mapped[str | None] = mapped_column(String(256), nullable=True)
-    title: Mapped[str] = mapped_column(String(512))
-    narrator: Mapped[str | None] = mapped_column(String(256), nullable=True)
-    cover: Mapped[str | None] = mapped_column(String(512), nullable=True)
-    track: Mapped[int | None] = mapped_column(Integer, nullable=True)  # indexul fișierului din torrent
-    track_no: Mapped[int] = mapped_column(Integer, default=0)  # a câta pistă (0 = prima)
-    tracks_total: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    position: Mapped[float] = mapped_column(Float, default=0)
-    duration: Mapped[float | None] = mapped_column(Float, nullable=True)  # durata pistei curente
-    added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    listened_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-
-
 class Notification(Base):
     """Anunț din clopoțel: episod nou disponibil / sezon nou anunțat la un serial urmărit."""
 
